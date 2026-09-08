@@ -113,6 +113,13 @@ _DEFS: list[SettingDef] = [
     ),
     SettingDef("admin.password_hash", "admin", True, None, "ADMIN_PASSWORD_HASH"),
     SettingDef("admin.session_epoch", "admin", False, "1", _env_var_for("admin.session_epoch")),
+    SettingDef(
+        "review.auto_enabled", "review", False, "false", _env_var_for("review.auto_enabled")
+    ),
+    SettingDef("review.send_time", "review", False, "21:00", _env_var_for("review.send_time")),
+    # Internal bookkeeping (last date a daily review was actually sent) —
+    # not exposed in the admin UI, same pattern as admin.session_epoch.
+    SettingDef("review.last_sent_date", "review", False, "", _env_var_for("review.last_sent_date")),
 ]
 
 DEFS_BY_KEY: dict[str, SettingDef] = {d.key: d for d in _DEFS}

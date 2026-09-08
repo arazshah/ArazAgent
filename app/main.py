@@ -7,6 +7,7 @@ import logging
 import secrets as secrets_module
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Request, Response
 
@@ -17,9 +18,11 @@ from app.crypto import Crypto
 from app.db import apply_schema, check_ready, create_pool
 from app.logsafe import install as install_log_redaction
 from app.providers.registry import ProviderRegistry
+from app.review import build_review_text, is_due
 from app.settings_store import SettingsStore
 from app.transcribe.orchestrator import transcribe_voice_job
 from app.triage import triage_inbox_row
+from app.tz import TEHRAN
 
 logging.basicConfig(level=logging.INFO)
 install_log_redaction()
@@ -68,6 +71,50 @@ async def _polling_loop(app: FastAPI) -> None:
             backoff = min(backoff * 2, 30.0)
 
 
+async def _review_loop(app: FastAPI) -> None:
+    """Checks once a minute whether a daily review is due (review.
+    auto_enabled + review.send_time, Tehran time) and hasn't already gone
+    out today, and sends one to every allowed user if so. Off by default —
+    review.auto_enabled must be turned on in the admin UI.
+    """
+    settings: SettingsStore = app.state.settings
+
+    while True:
+        try:
+            await asyncio.sleep(60)
+
+            enabled = (await settings.get("review.auto_enabled")) or "false"
+            if enabled.strip().lower() != "true":
+                continue
+
+            send_time = (await settings.get("review.send_time")) or "21:00"
+            last_sent = await settings.get("review.last_sent_date")
+            now = datetime.now(TEHRAN)
+            if not is_due(now, send_time, last_sent):
+                continue
+
+            allowed = await settings.get_allowed_user_ids()
+            if not allowed:
+                continue
+
+            registry: ProviderRegistry = app.state.registry
+            provider = await registry.get_bale_client()
+            if provider is None:
+                continue
+
+            text = await build_review_text(app.state.pool)
+            for user_id in allowed:
+                # Private Bale chats: chat_id == user_id, same assumption
+                # capture.py relies on for allowlisting.
+                await provider.send_message(user_id, text)
+
+            await settings.set("review.last_sent_date", now.date().isoformat())
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception("review loop iteration failed")
+
+
 def _schedule(job) -> None:
     asyncio.create_task(job())
 
@@ -111,14 +158,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.triage = _triage
 
     poll_task = asyncio.create_task(_polling_loop(app))
+    review_task = asyncio.create_task(_review_loop(app))
 
     logger.info("startup complete")
     try:
         yield
     finally:
         poll_task.cancel()
+        review_task.cancel()
         try:
             await poll_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await review_task
         except asyncio.CancelledError:
             pass
         await registry.aclose()

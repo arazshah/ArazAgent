@@ -44,6 +44,7 @@ _GROUP_LABELS = {
     "llm": "هوش مصنوعی",
     "transcription": "رونویسی",
     "system": "سیستم",
+    "review": "مرور دوره‌ای",
 }
 
 

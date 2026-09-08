@@ -172,3 +172,26 @@ anyway.
 
 Reusing `app/llm.py` again (this time for `embed_text`) keeps the same
 single-LLM-client property Phase 2 established.
+
+## Phase 5: periodic review
+
+A read-only report over the same `items`/`inbox` data (`app/review.
+build_review_text`): open task count and the next few by deadline, plus a
+7-day count by type. No new LLM calls, no new tables.
+
+Two ways to get it:
+
+- **`/review`** — on demand, any time.
+- **An automatic daily send** — `app/main._review_loop` polls once a
+  minute; when `review.auto_enabled` is `"true"` and local (Tehran) time
+  has passed `review.send_time`, it sends the same report to every
+  `bale.allowed_user_ids` entry and records `review.last_sent_date` so it
+  fires at most once per day. Off by default. The send-once-a-day gate
+  (`app/review.is_due`) is a pure function specifically so it has direct
+  test coverage without exercising the loop itself — same reasoning as
+  `_polling_loop` staying untested while the things it calls are tested.
+
+The auto-send assumes a private Bale chat's `chat_id == user_id`, the same
+assumption `app/capture.py` relies on for allowlisting — there is no stored
+chat_id to send to otherwise, since a review isn't triggered by an incoming
+message.

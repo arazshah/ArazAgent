@@ -180,3 +180,15 @@ async def test_search_no_results(pool, crypto, monkeypatch):
     await handle_update(make_text_update(1, 999, "/search nonexistent"), ctx)
 
     assert "پیدا نشد" in provider.sent[-1][1]
+
+
+async def test_review_reports_open_tasks(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+    await _insert_item(pool, "task", "buy milk")
+
+    await handle_update(make_text_update(1, 999, "/review"), ctx)
+
+    reply = provider.sent[-1][1]
+    assert "کارهای باز: 1" in reply
+    assert "buy milk" in reply

@@ -1,6 +1,6 @@
-"""Bot commands: /start /today /stats /items /tasks /done /search. No admin
-commands over the bot — all configuration happens in the web UI, so a
-compromised messaging account can never change settings.
+"""Bot commands: /start /today /stats /items /tasks /done /search /review.
+No admin commands over the bot — all configuration happens in the web UI,
+so a compromised messaging account can never change settings.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from app import tz
 from app.embeddings import search_items
 from app.providers.base import IncomingMessage
+from app.review import build_review_text
 
 if TYPE_CHECKING:
     from app.capture import CaptureContext
@@ -22,7 +23,8 @@ START_TEXT = (
     "/items برای دیدن آخرین آیتم‌های دسته‌بندی‌شده\n"
     "/tasks برای دیدن کارهای باز\n"
     "/done شماره برای بستن یک کار\n"
-    "/search عبارت برای جست‌وجوی معنایی در آیتم‌ها"
+    "/search عبارت برای جست‌وجوی معنایی در آیتم‌ها\n"
+    "/review برای مرور دوره‌ای"
 )
 
 UNKNOWN_COMMAND_TEXT = "دستور ناشناخته."
@@ -58,6 +60,8 @@ async def dispatch(msg: IncomingMessage, ctx: CaptureContext) -> None:
         await _mark_done(msg, ctx)
     elif command == "search":
         await _search(msg, ctx)
+    elif command == "review":
+        await _review(msg, ctx)
     else:
         await ctx.provider.send_message(msg.chat_id, UNKNOWN_COMMAND_TEXT)
 
@@ -192,3 +196,9 @@ async def _search(msg: IncomingMessage, ctx: CaptureContext) -> None:
         lines.append(line)
 
     await ctx.provider.send_message(msg.chat_id, "\n".join(lines))
+
+
+async def _review(msg: IncomingMessage, ctx: CaptureContext) -> None:
+    assert msg.chat_id is not None
+    text = await build_review_text(ctx.pool)
+    await ctx.provider.send_message(msg.chat_id, text)

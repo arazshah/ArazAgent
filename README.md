@@ -1,4 +1,4 @@
-# araz-agent — Personal Capture + Triage + Task + Search Layer (Phase 4)
+# araz-agent — Personal Capture + Triage + Task + Search + Review Layer (Phase 5)
 
 Single-user capture assistant for the Bale messenger. Receives text and voice
 notes, transcribes voice via AvalAI, classifies each capture into a typed
@@ -10,10 +10,13 @@ Phase 1 was capture only. Phase 2 added triage: every captured text (typed
 or transcribed) is classified once by the configured LLM into the `items`
 table — see `ARCHITECTURE.md` for the data flow. Phase 3 added basic task
 management over that table via bot commands: `/tasks` lists open tasks,
-`/done <id>` closes one. **Phase 4 adds semantic search**: every item is
+`/done <id>` closes one. Phase 4 added semantic search: every item is
 embedded once (`pgvector`), and `/search <query>` finds the nearest items by
-meaning, not just keyword. No planning, scoring, scheduling, or review flow
-yet; see `FUTURE.md` for what's still deferred.
+meaning, not just keyword. **Phase 5 adds a periodic review**: `/review` on
+demand any time, plus an optional once-a-day automatic summary (off by
+default — turn on `review.auto_enabled` and set `review.send_time` in the
+admin UI). No planning, scoring, or scheduling logic yet; see `FUTURE.md`
+for what's still deferred.
 
 > Status: skeleton under active development. Sections below are being filled
 > in as each part of the system lands (see commit history / PR).

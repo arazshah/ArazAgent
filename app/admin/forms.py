@@ -7,9 +7,12 @@ handful of one-liners. A generic form framework would be overkill here.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import urlparse
+
+_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 class FieldValidationError(ValueError):
@@ -65,6 +68,13 @@ def validate_bool(value: str) -> str:
     return cleaned
 
 
+def validate_time(value: str) -> str:
+    cleaned = value.strip()
+    if not _TIME_RE.match(cleaned):
+        raise ValueError("باید به‌صورت HH:MM باشد (مثلاً 21:00)")
+    return cleaned
+
+
 @dataclass(frozen=True)
 class FieldSpec:
     key: str
@@ -102,5 +112,11 @@ GROUPS: dict[str, list[FieldSpec]] = {
     ],
     "system": [
         FieldSpec("system.kill_switch_target", "هدف تعداد روزانه", False, validate_positive_int),
+    ],
+    "review": [
+        FieldSpec(
+            "review.auto_enabled", "ارسال خودکار مرور روزانه (true/false)", False, validate_bool
+        ),
+        FieldSpec("review.send_time", "ساعت ارسال (HH:MM، به‌وقت تهران)", False, validate_time),
     ],
 }
