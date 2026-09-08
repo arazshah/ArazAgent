@@ -36,8 +36,13 @@ rules, and a rough weekly-capacity budget, all configurable in the admin
 UI under "قانون اساسی" (`constitution.goals`, `constitution.hard_rules`,
 `constitution.weekly_capacity_hours`) — and gets a real decision: do it
 now, schedule it, delegate it, archive it, or decline it. If capacity is
-tight, the model is told to only ever answer "schedule" or "decline." No
-goals defined yet? That's fine — it falls back to general judgment until
+tight, the model is told to only ever answer "schedule" or "decline" —
+and this is now enforced in code too, not just prompted: a "do it now"
+that slips through when the week's capacity is already spent is
+downgraded to "schedule" unconditionally, with the reason and the fact
+that it was capped recorded on the item (see `ARCHITECTURE.md`'s
+"Capacity guard" section). No goals defined yet? That's fine — it falls
+back to general judgment until
 you fill them in. See `ARCHITECTURE.md`'s "Constitution-driven scoring"
 section for exactly how. **And the decision reaches you immediately** —
 right after "✅ captured," a second message announces the type, decision,

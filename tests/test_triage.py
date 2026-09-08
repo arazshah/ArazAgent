@@ -316,6 +316,116 @@ async def test_what_to_drop_instead_stored_in_meta(pool, crypto, monkeypatch):
     assert meta == {"what_to_drop_instead": "کار #12 رو کنار بذار"}
 
 
+def test_apply_capacity_guard_downgrades_do_now_when_capacity_spent():
+    decision, reason, capped = triage._apply_capacity_guard("do_now", "فوریه", 0.0)
+    assert decision == "schedule"
+    assert capped is True
+    assert "فوریه" in reason
+    assert "ظرفیت" in reason
+
+
+def test_apply_capacity_guard_builds_reason_when_none_given():
+    decision, reason, capped = triage._apply_capacity_guard("do_now", None, -2.0)
+    assert decision == "schedule"
+    assert capped is True
+    assert reason == "ظرفیت این هفته پر است؛ به «زمان‌بندی» تغییر یافت."
+
+
+def test_apply_capacity_guard_leaves_do_now_when_capacity_available():
+    decision, reason, capped = triage._apply_capacity_guard("do_now", "فوریه", 5.0)
+    assert decision == "do_now"
+    assert reason == "فوریه"
+    assert capped is False
+
+
+def test_apply_capacity_guard_ignores_non_do_now_decisions():
+    decision, reason, capped = triage._apply_capacity_guard("archive", "چون تکراره", 0.0)
+    assert decision == "archive"
+    assert reason == "چون تکراره"
+    assert capped is False
+
+
+async def test_do_now_downgraded_to_schedule_when_capacity_is_spent(pool, crypto, monkeypatch):
+    """The LLM is only ever *asked* not to answer do_now when capacity is
+    spent — this is the code-level backstop for when it answers do_now
+    anyway. Zero weekly capacity means remaining_capacity_hours is always
+    <= 0, regardless of open tasks.
+    """
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    await settings.set("constitution.weekly_capacity_hours", "1")
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        assert constitution["remaining_capacity_hours"] <= 0
+        return {
+            "type": "task",
+            "title": "x",
+            "decision": "do_now",
+            "decision_reason": "فوریه",
+        }
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    # Fill capacity with an already-open task so remaining <= 0.
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO items (inbox_id, type, title, status, effort_minutes) "
+            "VALUES (%s, 'task', 'other', 'open', 120)",
+            (await _insert_row(pool, "other task"),),
+        )
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    _score, decision, meta = await _score_and_decision(pool, inbox_id)
+    assert decision == "schedule"
+    assert meta == {"capacity_capped": True}
+
+
+async def test_do_now_kept_when_capacity_available(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    await settings.set("constitution.weekly_capacity_hours", "40")
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        assert constitution["remaining_capacity_hours"] > 0
+        return {"type": "task", "title": "x", "decision": "do_now"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    _score, decision, meta = await _score_and_decision(pool, inbox_id)
+    assert decision == "do_now"
+    assert meta == {}
+
+
+async def test_capacity_guard_leaves_non_do_now_decisions_alone(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    await settings.set("constitution.weekly_capacity_hours", "1")
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x", "decision": "delegate"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO items (inbox_id, type, title, status, effort_minutes) "
+            "VALUES (%s, 'task', 'other', 'open', 120)",
+            (await _insert_row(pool, "other task"),),
+        )
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    _score, decision, meta = await _score_and_decision(pool, inbox_id)
+    assert decision == "delegate"
+    assert meta == {}
+
+
 async def test_notify_called_with_decision_announcement_on_success(pool, crypto, monkeypatch):
     settings = SettingsStore(pool, crypto)
     await _configure_llm(settings)

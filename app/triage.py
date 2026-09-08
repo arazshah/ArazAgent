@@ -80,6 +80,23 @@ def _clean_decision(value: object) -> str:
     return value if value in VALID_DECISIONS else DEFAULT_DECISION
 
 
+def _apply_capacity_guard(
+    decision: str, decision_reason: str | None, remaining_capacity_hours: float
+) -> tuple[str, str | None, bool]:
+    """The LLM is prompted to never answer "do_now" once capacity is spent,
+    but a prompt is a request, not a guarantee — models drift. This is the
+    backstop: if capacity is at or below zero, "do_now" is downgraded to
+    "schedule" here in code, every time, regardless of what the model said.
+    Any other decision (schedule/delegate/archive/decline) is left alone —
+    none of those claim time this week, so none of them need capping.
+    """
+    if decision != "do_now" or remaining_capacity_hours > 0:
+        return decision, decision_reason, False
+    note = "ظرفیت این هفته پر است؛ به «زمان‌بندی» تغییر یافت."
+    combined_reason = f"{decision_reason} — {note}" if decision_reason else note
+    return DEFAULT_DECISION, combined_reason, True
+
+
 def _format_decision_announcement(
     item_id: int,
     item_type: str,
@@ -139,10 +156,15 @@ async def triage_inbox_row(
         item_type = "note"
     title = (_clean_text(result.get("title")) or text.strip())[:MAX_TITLE_LENGTH]
     what_to_drop = _clean_text(result.get("what_to_drop_instead"))
-    meta = {"what_to_drop_instead": what_to_drop} if what_to_drop else {}
+    meta: dict[str, object] = {"what_to_drop_instead": what_to_drop} if what_to_drop else {}
     score = _clean_score(result.get("score"))
     decision = _clean_decision(result.get("decision"))
     decision_reason = _clean_text(result.get("decision_reason"))
+    decision, decision_reason, capacity_capped = _apply_capacity_guard(
+        decision, decision_reason, constitution["remaining_capacity_hours"]
+    )
+    if capacity_capped:
+        meta["capacity_capped"] = True
 
     async with pool.connection() as conn:
         cur = await conn.execute(

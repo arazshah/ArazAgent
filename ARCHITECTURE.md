@@ -373,6 +373,34 @@ scoring is just less targeted until goals exist. `app.constitution`'s
 parsing and capacity math are pure/DB-only and fully unit-tested
 independent of the LLM.
 
+## Capacity guard: enforced in code, not just prompted
+
+The prompt tells the model to never answer `"do_now"` once
+`remaining_capacity_hours` is at or below zero — but a system prompt is a
+request the model can still ignore or misjudge, not a guarantee. Bugs and
+model drift both fail the same way here: a "do it now" landing in an
+already-full week. `app.triage._apply_capacity_guard` is the code-level
+backstop that makes the rule actually hold:
+
+```
+ decision = _clean_decision(result.get("decision"))          # from the LLM
+ decision, decision_reason, capacity_capped = _apply_capacity_guard(
+     decision, decision_reason, constitution["remaining_capacity_hours"]
+ )
+```
+
+If `decision == "do_now"` and `remaining_capacity_hours <= 0`, the
+decision is downgraded to `"schedule"` unconditionally, `decision_reason`
+gets a note explaining the downgrade appended (or set outright if there
+was none), and `items.meta.capacity_capped = true` records that this
+happened — visible later in the admin item browser or a calibration pass,
+not silently lost. Every other decision (`schedule`, `delegate`,
+`archive`, `decline`) is left untouched: none of them claim time this
+week, so none of them need capping — only `"do_now"` can violate the
+"there's no room left" fact the constitution computed. This is a pure
+function (no I/O), unit-tested directly (`test_apply_capacity_guard_*` in
+`tests/test_triage.py`) independent of any LLM response shape.
+
 ## Immediate decision announcement
 
 The gatekeeper's decision reaches the user right after capture, not only
