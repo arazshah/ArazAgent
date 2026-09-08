@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from app import tz
 from app.embeddings import search_items
+from app.jalali import format_deadline
 from app.providers.base import IncomingMessage
 from app.review import build_review_text
 
@@ -113,7 +114,7 @@ async def _items(msg: IncomingMessage, ctx: CaptureContext) -> None:
         label = _TYPE_LABEL.get(item_type, f"• {item_type}")
         line = f"{label} — {title}"
         if deadline is not None:
-            line += f" (تا {deadline.isoformat()})"
+            line += f" (تا {format_deadline(deadline)})"
         lines.append(line)
 
     await ctx.provider.send_message(msg.chat_id, "\n".join(lines))
@@ -141,7 +142,7 @@ async def _tasks(msg: IncomingMessage, ctx: CaptureContext) -> None:
     for item_id, title, deadline in rows:
         line = f"#{item_id} {title}"
         if deadline is not None:
-            line += f" (تا {deadline.isoformat()})"
+            line += f" (تا {format_deadline(deadline)})"
         lines.append(line)
     lines.append("\nبرای بستن یک کار: /done شماره")
 
@@ -192,7 +193,7 @@ async def _search(msg: IncomingMessage, ctx: CaptureContext) -> None:
         label = _TYPE_LABEL.get(item_type, f"• {item_type}")
         line = f"#{item_id} {label} — {title}"
         if deadline is not None:
-            line += f" (تا {deadline.isoformat()})"
+            line += f" (تا {format_deadline(deadline)})"
         lines.append(line)
 
     await ctx.provider.send_message(msg.chat_id, "\n".join(lines))

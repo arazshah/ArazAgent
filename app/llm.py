@@ -19,6 +19,7 @@ from datetime import datetime
 
 from openai import AsyncOpenAI
 
+from app.jalali import today_jalali_str
 from app.retry import call_with_retries
 from app.tz import TEHRAN
 
@@ -27,7 +28,12 @@ logger = logging.getLogger(__name__)
 VALID_ITEM_TYPES = ("task", "note", "idea", "event")
 
 _TRIAGE_SYSTEM_PROMPT = """تو بخشی از یک دستیار شخصی هستی که پیام‌های ثبت‌شده‌ی کاربر را \
-دسته‌بندی می‌کند. امروز {today} است (تقویم میلادی، منطقه‌ی زمانی تهران).
+دسته‌بندی می‌کند. امروز {today} است به تقویم میلادی، برابر با {today_jalali} \
+به تقویم شمسی (منطقه‌ی زمانی تهران).
+
+کاربر ممکن است به تاریخ به هر شکلی اشاره کند: شمسی ("۱۵ مهر", "دوشنبه‌ی \
+بعد")، میلادی، یا نسبی ("فردا", "هفته‌ی دیگر"). آن را با توجه به تاریخ امروز \
+(هر دو تقویم بالا) به تاریخ میلادی دقیق تبدیل کن.
 
 برای متن ورودی، دقیقاً یک شیء JSON با این کلیدها برگردان و هیچ متن دیگری \
 (از جمله ```) ننویس:
@@ -41,8 +47,8 @@ _TRIAGE_SYSTEM_PROMPT = """تو بخشی از یک دستیار شخصی هست�
 است، وگرنه null,
   "effort_minutes": تخمین زمان لازم به دقیقه (عدد صحیح) اگر قابل‌تخمین \
 است، وگرنه null,
-  "deadline": تاریخ سررسید به‌صورت YYYY-MM-DD اگر متن به آن اشاره دارد، \
-وگرنه null,
+  "deadline": تاریخ سررسید به‌صورت YYYY-MM-DD **میلادی** اگر متن به آن \
+اشاره دارد، وگرنه null,
   "decision_reason": یک جمله‌ی کوتاه فارسی که دلیل این دسته‌بندی را \
 توضیح می‌دهد
 }}
@@ -69,12 +75,13 @@ async def classify_capture(base_url: str, api_key: str, model: str, text: str) -
     client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=30)
     try:
         today = datetime.now(TEHRAN).date().isoformat()
+        prompt = _TRIAGE_SYSTEM_PROMPT.format(today=today, today_jalali=today_jalali_str())
 
         async def call():
             return await client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": _TRIAGE_SYSTEM_PROMPT.format(today=today)},
+                    {"role": "system", "content": prompt},
                     {"role": "user", "content": text},
                 ],
                 temperature=0,

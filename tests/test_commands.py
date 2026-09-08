@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app import commands
 from app.capture import CaptureContext, handle_update
+from app.jalali import format_deadline
 from app.settings_store import SettingsStore
 from tests.fakes import FakeProvider, make_text_update
 
@@ -61,7 +62,7 @@ async def test_items_lists_recent_items_with_type_and_deadline(pool, crypto):
 
     reply = provider.sent[-1][1]
     assert "call the dentist" in reply
-    assert "2026-01-05" in reply
+    assert format_deadline("2026-01-05") in reply
     assert "weekend trip" in reply
     assert "📌" in reply
     assert "💡" in reply

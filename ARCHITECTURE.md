@@ -258,3 +258,28 @@ bug had no test that could have caught it.
 does **not** retry — a human is watching a spinner for that one, and
 turning a broken config into a 40-second wait before showing the error is
 worse than showing it immediately.
+
+## Phase 8: Shamsi (Jalali) calendar
+
+Storage stays Gregorian — `items.deadline` is unchanged, still a plain SQL
+`date`, and `app/triage.py`'s `_clean_deadline()` still expects
+`YYYY-MM-DD`. Shamsi is entirely a presentation and LLM-prompt-context
+concern, isolated in the new `app/jalali.py`:
+
+- **Prompt context**: `app/llm.py`'s triage system prompt now states
+  today's date in *both* calendars (Gregorian, for the output format; Shamsi,
+  because that's what a Persian-speaking user actually writes — "۱۵ مهر",
+  "دوشنبه‌ی بعد"). The model still must resolve to Gregorian `YYYY-MM-DD`
+  for storage; only its ability to *understand* the input changed.
+- **Display**: every place a stored deadline reaches a human —
+  `/items`, `/tasks`, `/search`, `/review` (`app/commands.py`,
+  `app/review.py`), and the admin item browser (`app/templates/items.html`,
+  via a `jalali` Jinja filter registered in `app/admin/routes.py._templates()`)
+  — now shows it as `format_deadline()`'s Shamsi string ("۱۵ دی ۱۴۰۴")
+  instead of the raw ISO date.
+- **New dependency**: `jdatetime` (pure Python, no C extension) does the
+  actual Gregorian↔Jalali conversion; `app/jalali.py` only adds Persian-digit
+  formatting and month names on top.
+
+Nothing about `/done <id>`, `/tasks` filtering, or `items.status` changed —
+this phase is display-only.

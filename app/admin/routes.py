@@ -20,6 +20,7 @@ from app import items_view, tz
 from app.admin.forms import GROUPS
 from app.bootstrap import Bootstrap
 from app.db import check_ready
+from app.jalali import format_deadline
 from app.llm import test_chat_connection
 from app.security import (
     LOGIN_CONSTANT_DELAY_SECONDS,
@@ -74,7 +75,9 @@ async def _ordered_counts(counts_coro, key_order: tuple[str, ...]) -> dict[str, 
 
 
 def _templates() -> Jinja2Templates:
-    return Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates.env.filters["jalali"] = format_deadline
+    return templates
 
 
 async def _current_epoch(settings: SettingsStore) -> int:

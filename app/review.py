@@ -14,6 +14,8 @@ from datetime import datetime
 
 from psycopg_pool import AsyncConnectionPool
 
+from app.jalali import format_deadline, today_jalali_str
+
 TOP_TASKS_LIMIT = 5
 LOOKBACK_DAYS = 7
 
@@ -47,11 +49,11 @@ async def build_review_text(pool: AsyncConnectionPool) -> str:
         )
         by_type_week = await cur.fetchall()
 
-    lines = ["🗓 مرور دوره‌ای", "", f"کارهای باز: {open_tasks}"]
+    lines = [f"🗓 مرور دوره‌ای — {today_jalali_str()}", "", f"کارهای باز: {open_tasks}"]
     for item_id, title, deadline in top_tasks:
         line = f"  #{item_id} {title}"
         if deadline is not None:
-            line += f" (تا {deadline.isoformat()})"
+            line += f" (تا {format_deadline(deadline)})"
         lines.append(line)
 
     lines.append("")
