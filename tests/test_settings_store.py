@@ -112,6 +112,29 @@ async def test_reload_callback_not_fired_for_unrelated_key(pool, crypto):
     assert calls == []
 
 
+async def test_admin_password_hash_base64_fallback(pool, crypto, monkeypatch):
+    import base64
+
+    monkeypatch.delenv("ADMIN_PASSWORD_HASH", raising=False)
+    fake_hash = "$argon2id$v=19$m=65536,t=3,p=4$salt$digest"
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH_BASE64", base64.b64encode(fake_hash.encode()).decode())
+    store = SettingsStore(pool, crypto)
+    resolved = await store.resolve("admin.password_hash")
+    assert resolved.value == fake_hash
+    assert resolved.source == "env"
+
+
+async def test_admin_password_hash_base64_takes_priority_over_raw(pool, crypto, monkeypatch):
+    import base64
+
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "corrupted-value")
+    good_hash = "$argon2id$v=19$m=65536,t=3,p=4$salt$digest"
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH_BASE64", base64.b64encode(good_hash.encode()).decode())
+    store = SettingsStore(pool, crypto)
+    resolved = await store.resolve("admin.password_hash")
+    assert resolved.value == good_hash
+
+
 async def test_clear_removes_row_and_falls_back(pool, crypto, monkeypatch):
     monkeypatch.delenv("LLM_CHAT_MODEL", raising=False)
     store = SettingsStore(pool, crypto)

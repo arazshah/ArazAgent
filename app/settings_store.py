@@ -11,6 +11,8 @@ response or template context — templates only ever see a masked hint.
 
 from __future__ import annotations
 
+import base64
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -19,6 +21,8 @@ from typing import Literal
 from psycopg_pool import AsyncConnectionPool
 
 from app.crypto import Crypto, mask_secret
+
+logger = logging.getLogger(__name__)
 
 CACHE_TTL_SECONDS = 30
 
@@ -102,6 +106,11 @@ _DEFS: list[SettingDef] = [
 
 DEFS_BY_KEY: dict[str, SettingDef] = {d.key: d for d in _DEFS}
 
+# Some deployment platforms mangle '$' characters (argon2 hashes are full of
+# them) when a value is stored or piped through a shell. A base64-encoded
+# fallback env var sidesteps that entirely and is checked first.
+_B64_ENV_FALLBACK: dict[str, str] = {"admin.password_hash": "ADMIN_PASSWORD_HASH_BASE64"}
+
 
 class SettingsError(ValueError):
     """Raised when a stored or provided setting value is malformed."""
@@ -137,6 +146,17 @@ class SettingsStore:
     def _invalidate(self, key: str) -> None:
         self._cache.pop(key, None)
 
+    def _resolve_env_value(self, definition: SettingDef) -> str | None:
+        b64_var = _B64_ENV_FALLBACK.get(definition.key)
+        if b64_var:
+            b64_value = os.environ.get(b64_var)
+            if b64_value:
+                try:
+                    return base64.b64decode(b64_value).decode("utf-8")
+                except (ValueError, UnicodeDecodeError):
+                    logger.warning("%s is not valid base64; ignoring", b64_var)
+        return os.environ.get(definition.env_var)
+
     async def resolve(self, key: str) -> ResolvedSetting:
         cached = self._cache.get(key)
         if cached is not None:
@@ -163,7 +183,7 @@ class SettingsStore:
             else:
                 resolved = ResolvedSetting(value_plain, "db", is_secret)
         else:
-            env_value = os.environ.get(definition.env_var)
+            env_value = self._resolve_env_value(definition)
             if env_value is not None:
                 resolved = ResolvedSetting(
                     env_value,
