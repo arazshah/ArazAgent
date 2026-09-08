@@ -7,8 +7,8 @@ services:
     env_file: .env
     environment:
       TZ: Asia/Tehran
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     volumes:
       - audio_data:/app/data
     depends_on:
@@ -20,10 +20,14 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-    # Coolify assigns the public domain/port from its own UI. Coolify's
-    # SERVICE_FQDN_* magic env vars are version-dependent — set the domain
-    # (agent.araz.me) and port (8000) from the Coolify resource UI instead
-    # of relying on the line below.
+    # Do NOT publish a host port here (no top-level "ports:"). Coolify's
+    # reverse proxy reaches the container over the internal "coolify"
+    # network using the port declared above via `expose`; binding the same
+    # host port directly, as this file used to, collides with any other
+    # Coolify-managed service that also wants host port 8000. Set the
+    # public domain (agent.araz.me) and container port (8000) from the
+    # Coolify resource UI. Coolify's SERVICE_FQDN_* magic env vars are
+    # version-dependent — the UI is the reliable path, not the line below.
     # SERVICE_FQDN_APP_8000=agent.araz.me
 
   # Switching to Coolify's managed Postgres: drop this service and point
