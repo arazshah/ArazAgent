@@ -97,6 +97,23 @@ def _apply_capacity_guard(
     return DEFAULT_DECISION, combined_reason, True
 
 
+def _require_trade_off_for_do_now(
+    decision: str, decision_reason: str | None, what_to_drop: str | None
+) -> tuple[str, str | None, bool]:
+    """Every "do it now" is a new commitment accepted onto an already-full
+    plate — so the prompt requires "what_to_drop_instead" whenever decision
+    is "do_now". This is the backstop for when the model answers "do_now"
+    anyway without naming a trade-off: without this, every "yes" only ever
+    grows the list, never shrinks it. Downgrade to "schedule" here, in code,
+    rather than trust the model to have honored the prompt's requirement.
+    """
+    if decision != "do_now" or what_to_drop:
+        return decision, decision_reason, False
+    note = "چیزی برای کنار گذاشتن مشخص نشد؛ به «زمان‌بندی» تغییر یافت."
+    combined_reason = f"{decision_reason} — {note}" if decision_reason else note
+    return DEFAULT_DECISION, combined_reason, True
+
+
 def _format_decision_announcement(
     item_id: int,
     item_type: str,
@@ -160,6 +177,11 @@ async def triage_inbox_row(
     score = _clean_score(result.get("score"))
     decision = _clean_decision(result.get("decision"))
     decision_reason = _clean_text(result.get("decision_reason"))
+    decision, decision_reason, missing_trade_off = _require_trade_off_for_do_now(
+        decision, decision_reason, what_to_drop
+    )
+    if missing_trade_off:
+        meta["missing_trade_off"] = True
     decision, decision_reason, capacity_capped = _apply_capacity_guard(
         decision, decision_reason, constitution["remaining_capacity_hours"]
     )

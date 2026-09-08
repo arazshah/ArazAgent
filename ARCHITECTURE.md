@@ -401,6 +401,42 @@ week, so none of them need capping — only `"do_now"` can violate the
 function (no I/O), unit-tested directly (`test_apply_capacity_guard_*` in
 `tests/test_triage.py`) independent of any LLM response shape.
 
+## Mandatory trade-off: every "do it now" costs something else
+
+Scoring and the capacity guard stop the *volume* problem (too much
+accepted at once); this stops the *ratchet* problem — a list that only
+ever grows because saying "yes" is free. The prompt's JSON schema for
+`"what_to_drop_instead"` was rewritten from "suggest this if capacity is
+tight" to **required whenever `decision` is `"do_now"`**: the model must
+name a real open item to drop or defer, or it must not answer `"do_now"`
+at all.
+
+`app.triage._require_trade_off_for_do_now` is the same kind of code-level
+backstop as the capacity guard, and runs first:
+
+```
+ decision, decision_reason, missing_trade_off = _require_trade_off_for_do_now(
+     decision, decision_reason, what_to_drop
+ )
+ # then, unchanged from before:
+ decision, decision_reason, capacity_capped = _apply_capacity_guard(
+     decision, decision_reason, constitution["remaining_capacity_hours"]
+ )
+```
+
+If the model answers `"do_now"` without `what_to_drop_instead`, the
+decision is downgraded to `"schedule"` here, unconditionally —
+`decision_reason` gets a note appended (or set, if there was none), and
+`items.meta.missing_trade_off = true` records why. The two guards compose
+in sequence: a `"do_now"` that both lacks a trade-off *and* hits zero
+capacity only ever shows `missing_trade_off` (it's already downgraded to
+`"schedule"` before the capacity guard runs, which only acts on
+`"do_now"`); a `"do_now"` that names a trade-off but still exceeds
+capacity shows `capacity_capped` instead. Every other decision
+(`schedule`, `delegate`, `archive`, `decline`) is unaffected — the
+requirement only applies to accepting new work right now. Pure function,
+unit-tested directly (`test_require_trade_off_*` in `tests/test_triage.py`).
+
 ## Immediate decision announcement
 
 The gatekeeper's decision reaches the user right after capture, not only

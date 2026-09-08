@@ -41,7 +41,12 @@ and this is now enforced in code too, not just prompted: a "do it now"
 that slips through when the week's capacity is already spent is
 downgraded to "schedule" unconditionally, with the reason and the fact
 that it was capped recorded on the item (see `ARCHITECTURE.md`'s
-"Capacity guard" section). No goals defined yet? That's fine — it falls
+"Capacity guard" section). **And every "do it now" costs something else**:
+the model must name a real open item to drop or defer whenever it answers
+"do it now" — no trade-off named, no "do it now"; a slip-through is
+downgraded to "schedule" the same way the capacity guard works, so the
+list can no longer only ever grow (see "Mandatory trade-off" in
+`ARCHITECTURE.md`). No goals defined yet? That's fine — it falls
 back to general judgment until
 you fill them in. See `ARCHITECTURE.md`'s "Constitution-driven scoring"
 section for exactly how. **And the decision reaches you immediately** —

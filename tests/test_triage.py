@@ -251,7 +251,13 @@ async def test_valid_decision_and_score_are_stored(pool, crypto, monkeypatch):
     inbox_id = await _insert_row(pool)
 
     async def fake_classify(base_url, api_key, model, text, constitution):
-        return {"type": "task", "title": "x", "decision": "do_now", "score": 20}
+        return {
+            "type": "task",
+            "title": "x",
+            "decision": "do_now",
+            "score": 20,
+            "what_to_drop_instead": "کار #3 رو کنار بذار",
+        }
 
     monkeypatch.setattr(triage, "classify_capture", fake_classify)
 
@@ -260,7 +266,7 @@ async def test_valid_decision_and_score_are_stored(pool, crypto, monkeypatch):
     score, decision, meta = await _score_and_decision(pool, inbox_id)
     assert score == 20
     assert decision == "do_now"
-    assert meta == {}
+    assert meta == {"what_to_drop_instead": "کار #3 رو کنار بذار"}
 
 
 async def test_invalid_decision_falls_back_to_schedule(pool, crypto, monkeypatch):
@@ -345,6 +351,77 @@ def test_apply_capacity_guard_ignores_non_do_now_decisions():
     assert capped is False
 
 
+def test_require_trade_off_downgrades_do_now_without_a_trade_off():
+    decision, reason, missing = triage._require_trade_off_for_do_now("do_now", "فوریه", None)
+    assert decision == "schedule"
+    assert missing is True
+    assert "فوریه" in reason
+    assert "کنار گذاشتن" in reason
+
+
+def test_require_trade_off_builds_reason_when_none_given():
+    decision, reason, missing = triage._require_trade_off_for_do_now("do_now", None, "")
+    assert decision == "schedule"
+    assert missing is True
+    assert reason == "چیزی برای کنار گذاشتن مشخص نشد؛ به «زمان‌بندی» تغییر یافت."
+
+
+def test_require_trade_off_keeps_do_now_when_trade_off_given():
+    decision, reason, missing = triage._require_trade_off_for_do_now(
+        "do_now", "فوریه", "کار #12 رو کنار بذار"
+    )
+    assert decision == "do_now"
+    assert reason == "فوریه"
+    assert missing is False
+
+
+def test_require_trade_off_ignores_non_do_now_decisions():
+    decision, reason, missing = triage._require_trade_off_for_do_now("schedule", "بعداً", None)
+    assert decision == "schedule"
+    assert reason == "بعداً"
+    assert missing is False
+
+
+async def test_do_now_without_trade_off_is_downgraded_to_schedule(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x", "decision": "do_now", "decision_reason": "فوریه"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    _score, decision, meta = await _score_and_decision(pool, inbox_id)
+    assert decision == "schedule"
+    assert meta == {"missing_trade_off": True}
+
+
+async def test_do_now_with_trade_off_is_kept_when_capacity_available(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    await settings.set("constitution.weekly_capacity_hours", "40")
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {
+            "type": "task",
+            "title": "x",
+            "decision": "do_now",
+            "what_to_drop_instead": "کار #12 رو کنار بذار",
+        }
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    _score, decision, meta = await _score_and_decision(pool, inbox_id)
+    assert decision == "do_now"
+    assert meta == {"what_to_drop_instead": "کار #12 رو کنار بذار"}
+
+
 async def test_do_now_downgraded_to_schedule_when_capacity_is_spent(pool, crypto, monkeypatch):
     """The LLM is only ever *asked* not to answer do_now when capacity is
     spent — this is the code-level backstop for when it answers do_now
@@ -363,6 +440,7 @@ async def test_do_now_downgraded_to_schedule_when_capacity_is_spent(pool, crypto
             "title": "x",
             "decision": "do_now",
             "decision_reason": "فوریه",
+            "what_to_drop_instead": "کار #9 رو کنار بذار",
         }
 
     monkeypatch.setattr(triage, "classify_capture", fake_classify)
@@ -379,7 +457,7 @@ async def test_do_now_downgraded_to_schedule_when_capacity_is_spent(pool, crypto
 
     _score, decision, meta = await _score_and_decision(pool, inbox_id)
     assert decision == "schedule"
-    assert meta == {"capacity_capped": True}
+    assert meta == {"what_to_drop_instead": "کار #9 رو کنار بذار", "capacity_capped": True}
 
 
 async def test_do_now_kept_when_capacity_available(pool, crypto, monkeypatch):
@@ -390,7 +468,12 @@ async def test_do_now_kept_when_capacity_available(pool, crypto, monkeypatch):
 
     async def fake_classify(base_url, api_key, model, text, constitution):
         assert constitution["remaining_capacity_hours"] > 0
-        return {"type": "task", "title": "x", "decision": "do_now"}
+        return {
+            "type": "task",
+            "title": "x",
+            "decision": "do_now",
+            "what_to_drop_instead": "کار #7 رو کنار بذار",
+        }
 
     monkeypatch.setattr(triage, "classify_capture", fake_classify)
 
@@ -398,7 +481,7 @@ async def test_do_now_kept_when_capacity_available(pool, crypto, monkeypatch):
 
     _score, decision, meta = await _score_and_decision(pool, inbox_id)
     assert decision == "do_now"
-    assert meta == {}
+    assert meta == {"what_to_drop_instead": "کار #7 رو کنار بذار"}
 
 
 async def test_capacity_guard_leaves_non_do_now_decisions_alone(pool, crypto, monkeypatch):
