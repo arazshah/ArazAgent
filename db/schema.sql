@@ -1,0 +1,76 @@
+-- Idempotent schema, executed on every application startup (see app/db.py).
+-- Rationale: a managed Postgres (e.g. Coolify) may never run
+-- docker-entrypoint-initdb.d, and redeploys must be safe to re-apply.
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS inbox (
+  id                  bigserial PRIMARY KEY,
+  source              text        NOT NULL,
+  raw_text            text,
+  audio_path          text,
+  audio_duration_s    int,
+  transcript_status   text        NOT NULL DEFAULT 'n/a',
+  transcript_error    text,
+  transcript_backend  text,
+  provider            text        NOT NULL DEFAULT 'bale',
+  provider_update_id  bigint,
+  provider_message_id bigint,
+  provider_chat_id    bigint,
+  raw_update          jsonb       NOT NULL DEFAULT '{}',
+  captured_at         timestamptz NOT NULL DEFAULT now(),
+  processed_at        timestamptz
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS inbox_provider_update_uniq
+  ON inbox (provider, provider_update_id)
+  WHERE provider_update_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS inbox_unprocessed
+  ON inbox (captured_at) WHERE processed_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS inbox_pending_transcript
+  ON inbox (id) WHERE transcript_status = 'pending';
+
+-- Runtime configuration, editable from the admin UI.
+CREATE TABLE IF NOT EXISTS app_settings (
+  key          text        PRIMARY KEY,
+  value_plain  text,                              -- non-secret values
+  value_enc    bytea,                             -- Fernet-encrypted secrets
+  is_secret    boolean     NOT NULL DEFAULT false,
+  group_name   text        NOT NULL,              -- bale | llm | transcription | system | admin
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT app_settings_exactly_one_value CHECK (
+    (value_plain IS NOT NULL)::int + (value_enc IS NOT NULL)::int = 1
+  )
+);
+
+-- Audit trail. Records THAT a key changed, never its value.
+CREATE TABLE IF NOT EXISTS settings_audit (
+  id          bigserial PRIMARY KEY,
+  key         text        NOT NULL,
+  action      text        NOT NULL,   -- set | clear
+  actor_ip    text,
+  changed_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- Phase 2 target. Created now, written to later.
+CREATE TABLE IF NOT EXISTS items (
+  id              bigserial PRIMARY KEY,
+  inbox_id        bigint REFERENCES inbox(id) ON DELETE SET NULL,
+  type            text NOT NULL,
+  title           text NOT NULL,
+  project         text,
+  goal_key        text,
+  effort_minutes  int,
+  deadline        date,
+  decision        text,
+  decision_reason text,
+  status          text NOT NULL DEFAULT 'open',
+  human_override  text,
+  override_reason text,
+  meta            jsonb NOT NULL DEFAULT '{}',
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS items_open ON items (status, deadline);
