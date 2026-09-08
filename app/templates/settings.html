@@ -21,10 +21,12 @@
         <input type="password" id="{{ f.key }}" name="{{ f.key }}" placeholder="{{ f.masked_hint or 'تنظیم نشده' }}">
         <p class="hint">برای تغییر، مقدار جدید را وارد کنید</p>
         {% if f.masked_hint %}
-        <form method="post" action="{{ admin_path }}/settings/clear/{{ f.key }}" class="inline-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit" class="danger small">پاک کردن</button>
-        </form>
+        <button
+          type="submit"
+          class="danger small"
+          formaction="{{ admin_path }}/settings/clear/{{ f.key }}"
+          formnovalidate
+        >پاک کردن</button>
         {% endif %}
       {% else %}
         <input type="text" id="{{ f.key }}" name="{{ f.key }}" value="{{ f.value or '' }}">

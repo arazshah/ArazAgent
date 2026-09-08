@@ -4,6 +4,8 @@ CSRF, and session_epoch invalidation. Real Postgres, no live network.
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
+
 import httpx
 import pytest_asyncio
 from cryptography.fernet import Fernet
@@ -85,6 +87,43 @@ async def test_correct_password_sets_session_cookie_and_redirects(client):
     resp = await http.post("/admin/login", data={"password": PASSWORD}, follow_redirects=False)
     assert resp.status_code == 302
     assert "araz_admin_session" in resp.cookies
+
+
+class _FormNestingChecker(HTMLParser):
+    """A <form> nested inside another is invalid HTML — browsers silently
+    close the outer form early, so fields after the nested one (and the
+    real submit button) end up outside it and never get submitted with the
+    page's other fields. This caught a real bug in settings.html.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.depth = 0
+        self.max_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag == "form":
+            self.depth += 1
+            self.max_depth = max(self.max_depth, self.depth)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "form":
+            self.depth = max(0, self.depth - 1)
+
+
+async def test_settings_page_has_no_nested_forms(client):
+    http, app = client
+    await app.state.settings.set("admin.password_hash", hash_password(PASSWORD))
+    await app.state.settings.set("bale.bot_token", "test-token-value")
+    login_resp = await http.post(
+        "/admin/login", data={"password": PASSWORD}, follow_redirects=False
+    )
+    http.cookies.set("araz_admin_session", login_resp.cookies["araz_admin_session"])
+
+    resp = await http.get("/admin/settings")
+    checker = _FormNestingChecker()
+    checker.feed(resp.text)
+    assert checker.max_depth <= 1, "settings.html has a <form> nested inside another"
 
 
 async def test_missing_csrf_returns_400(client):
