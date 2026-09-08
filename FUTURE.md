@@ -44,6 +44,13 @@ options offered after each phase:
   fires exactly once, ever, per task.
 - A weekly (as opposed to daily) review cadence, or a configurable day of
   week — review.send_time is a daily HH:MM only for now.
+- A real per-day capacity setting for the morning brief (built — see
+  ARCHITECTURE.md's "Capacity-capped morning brief" section) — today it's
+  `constitution.weekly_capacity_hours / 7`, a rough slice of the same
+  weekly number the capacity guard uses, not something tuned separately
+  for "how much can I actually do before noon." No smarter effort
+  estimation either — an item with no `effort_minutes` costs a flat
+  30-minute assumption against the budget.
 - Task priority, or reopening a closed item from the bot (the admin item
   browser can now do both edit and reopen — the bot still can't).
 - Editing or deleting an item from the bot (`/edit`, `/delete`) — only

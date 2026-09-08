@@ -51,6 +51,7 @@ _GROUP_LABELS = {
     "reminder": "یادآوری",
     "constitution": "قانون اساسی",
     "dedup": "موارد تکراری",
+    "morning_brief": "خلاصه صبحگاهی",
 }
 
 _GROUP_ICONS = {
@@ -62,6 +63,7 @@ _GROUP_ICONS = {
     "reminder": "⏰",
     "constitution": "📜",
     "dedup": "🧬",
+    "morning_brief": "☀️",
 }
 
 # Extra sidebar tabs that aren't settings-form groups (webhook/admin panels).
@@ -73,7 +75,7 @@ _TAB_ICONS = {**_GROUP_ICONS, **_EXTRA_TAB_ICONS}
 # Sidebar grouping: (section label, tab ids). Order here is the render order.
 _NAV_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("هسته", ("bale", "llm", "transcription")),
-    ("رفتار و تصمیم‌گیری", ("constitution", "reminder", "review", "dedup")),
+    ("رفتار و تصمیم‌گیری", ("constitution", "reminder", "review", "dedup", "morning_brief")),
     ("سیستم", ("system", "webhook", "admin")),
 )
 

@@ -624,3 +624,51 @@ later (`items.meta.possible_duplicate_of`, readable from the admin item
 browser). Skipped entirely — not an error — when `dedup.enabled` is
 false, the new item has no embedding yet (embedding disabled/unconfigured/
 failed), or nothing open is close enough.
+
+## Capacity-capped morning brief
+
+`app/review.py`'s evening summary lists the top 5 open tasks by deadline
+— it's read-only, unranked beyond "soonest," and only asks "what's
+open." The morning brief (`app/morning_brief.py`) asks a different
+question: "given today's real capacity, what actually fits" — the same
+gatekeeper stance as the capacity guard and the trade-off requirement,
+applied to what gets *shown* instead of what gets *accepted*.
+
+```
+ app.constitution.build_constitution_context(pool, settings)
+        │  weekly_capacity_hours (constitution.weekly_capacity_hours)
+        ▼
+ daily_capacity_minutes = weekly_capacity_hours / 7 * 60      # a rough
+        │                                                       per-day
+        │                                                       slice —
+        │                                                       there is
+        │                                                       no
+        │                                                       separate
+        │                                                       daily
+        │                                                       capacity
+        │                                                       setting
+        ▼
+ open tasks, ranked entirely in SQL:
+   1. overdue or due today, first
+   2. then by decision (do_now < schedule < delegate < archive < decline)
+   3. then by score, descending
+        ▼
+ walk the ranked list, accumulating effort_minutes (or a default
+ 30-minute assumption for anything unestimated — otherwise an
+ un-estimated task would cost nothing against the budget) — stop once
+ the running total would exceed daily_capacity_minutes, except the very
+ first item is always included even alone it blows the budget (so one
+ big task never produces an empty brief)
+        ▼
+ "☀️ خلاصه صبح" — the included items (with a 🤝 marker for a
+ commitment), then "+N مورد دیگر در صف، فراتر از ظرفیت امروز"
+```
+
+On demand via `/brief`; optionally automatic via `morning_brief.
+auto_enabled` (default off, like the evening review) + `morning_brief.
+send_time` (default `07:30`), sent by `app.main._morning_brief_loop` —
+which reuses `app.review.is_due()` outright rather than reimplementing
+the identical "send once a day, after HH:MM Tehran time" gate. The two
+loops (evening review, morning brief) run independently: separate
+settings, separate `last_sent_date` bookkeeping keys, so turning one on
+doesn't imply the other.

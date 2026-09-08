@@ -156,4 +156,18 @@ GROUPS: dict[str, list[FieldSpec]] = {
             validate_bool,
         ),
     ],
+    "morning_brief": [
+        FieldSpec(
+            "morning_brief.auto_enabled",
+            "ارسال خودکار خلاصه صبحگاهی (true/false)",
+            False,
+            validate_bool,
+        ),
+        FieldSpec(
+            "morning_brief.send_time",
+            "ساعت ارسال (HH:MM، به‌وقت تهران)",
+            False,
+            validate_time,
+        ),
+    ],
 }

@@ -1,7 +1,7 @@
 """Bot commands: /start /today /stats /items /tasks /done /search /review
-/commitments. No admin commands over the bot — all configuration happens
-in the web UI, so a compromised messaging account can never change
-settings.
+/commitments /brief. No admin commands over the bot — all configuration
+happens in the web UI, so a compromised messaging account can never
+change settings.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from app.decisions_log import apply_status_change
 from app.embeddings import search_items
 from app.jalali import format_deadline
 from app.labels import DECISION_LABELS, TYPE_LABELS
+from app.morning_brief import build_morning_brief_text
 from app.providers.base import IncomingMessage
 from app.review import build_review_text
 
@@ -29,7 +30,8 @@ START_TEXT = (
     "/done شماره برای بستن یک کار\n"
     "/commitments برای دیدن تعهدهای باز به دیگران\n"
     "/search عبارت برای جست‌وجوی معنایی در آیتم‌ها\n"
-    "/review برای مرور دوره‌ای"
+    "/review برای مرور دوره‌ای\n"
+    "/brief برای خلاصه صبحگاهی محدود به ظرفیت امروز"
 )
 
 UNKNOWN_COMMAND_TEXT = "دستور ناشناخته."
@@ -69,6 +71,8 @@ async def dispatch(msg: IncomingMessage, ctx: CaptureContext) -> None:
         await _search(msg, ctx)
     elif command == "review":
         await _review(msg, ctx)
+    elif command == "brief":
+        await _brief(msg, ctx)
     else:
         await ctx.provider.send_message(msg.chat_id, UNKNOWN_COMMAND_TEXT)
 
@@ -242,4 +246,10 @@ async def _search(msg: IncomingMessage, ctx: CaptureContext) -> None:
 async def _review(msg: IncomingMessage, ctx: CaptureContext) -> None:
     assert msg.chat_id is not None
     text = await build_review_text(ctx.pool)
+    await ctx.provider.send_message(msg.chat_id, text)
+
+
+async def _brief(msg: IncomingMessage, ctx: CaptureContext) -> None:
+    assert msg.chat_id is not None
+    text = await build_morning_brief_text(ctx.pool, ctx.settings)
     await ctx.provider.send_message(msg.chat_id, text)

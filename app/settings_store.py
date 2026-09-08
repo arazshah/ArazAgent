@@ -138,6 +138,29 @@ _DEFS: list[SettingDef] = [
         _env_var_for("constitution.weekly_capacity_hours"),
     ),
     SettingDef("dedup.enabled", "dedup", False, "true", _env_var_for("dedup.enabled")),
+    SettingDef(
+        "morning_brief.auto_enabled",
+        "morning_brief",
+        False,
+        "false",
+        _env_var_for("morning_brief.auto_enabled"),
+    ),
+    SettingDef(
+        "morning_brief.send_time",
+        "morning_brief",
+        False,
+        "07:30",
+        _env_var_for("morning_brief.send_time"),
+    ),
+    # Internal bookkeeping (last date a brief was actually sent) — not
+    # exposed in the admin UI, same pattern as review.last_sent_date.
+    SettingDef(
+        "morning_brief.last_sent_date",
+        "morning_brief",
+        False,
+        "",
+        _env_var_for("morning_brief.last_sent_date"),
+    ),
 ]
 
 DEFS_BY_KEY: dict[str, SettingDef] = {d.key: d for d in _DEFS}

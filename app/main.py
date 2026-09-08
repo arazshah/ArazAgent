@@ -17,6 +17,7 @@ from app.capture import CaptureContext, handle_update
 from app.crypto import Crypto
 from app.db import apply_schema, check_ready, create_pool
 from app.logsafe import install as install_log_redaction
+from app.morning_brief import build_morning_brief_text
 from app.providers.registry import ProviderRegistry
 from app.reminders import due_reminders, format_reminder_text, mark_reminded
 from app.review import build_review_text, is_due
@@ -116,6 +117,50 @@ async def _review_loop(app: FastAPI) -> None:
             logger.exception("review loop iteration failed")
 
 
+async def _morning_brief_loop(app: FastAPI) -> None:
+    """Same "send once a day, after HH:MM Tehran time" gate as
+    _review_loop (reuses app.review.is_due() directly — the logic is
+    identical, only the settings keys and the message differ), just off a
+    separate schedule/toggle (morning_brief.auto_enabled, default false,
+    morning_brief.send_time) so this and the evening review can run
+    independently.
+    """
+    settings: SettingsStore = app.state.settings
+
+    while True:
+        try:
+            await asyncio.sleep(60)
+
+            enabled = (await settings.get("morning_brief.auto_enabled")) or "false"
+            if enabled.strip().lower() != "true":
+                continue
+
+            send_time = (await settings.get("morning_brief.send_time")) or "07:30"
+            last_sent = await settings.get("morning_brief.last_sent_date")
+            now = datetime.now(TEHRAN)
+            if not is_due(now, send_time, last_sent):
+                continue
+
+            allowed = await settings.get_allowed_user_ids()
+            if not allowed:
+                continue
+
+            registry: ProviderRegistry = app.state.registry
+            provider = await registry.get_bale_client()
+            if provider is None:
+                continue
+
+            text = await build_morning_brief_text(app.state.pool, settings)
+            for user_id in allowed:
+                await provider.send_message(user_id, text)
+
+            await settings.set("morning_brief.last_sent_date", now.date().isoformat())
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception("morning brief loop iteration failed")
+
+
 async def _reminder_loop(app: FastAPI) -> None:
     """Checks once a minute for open tasks whose deadline reminder lead
     time has arrived (reminder.enabled + reminder.lead_hours) and sends
@@ -199,6 +244,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     poll_task = asyncio.create_task(_polling_loop(app))
     review_task = asyncio.create_task(_review_loop(app))
     reminder_task = asyncio.create_task(_reminder_loop(app))
+    morning_brief_task = asyncio.create_task(_morning_brief_loop(app))
 
     logger.info("startup complete")
     try:
@@ -207,6 +253,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         poll_task.cancel()
         review_task.cancel()
         reminder_task.cancel()
+        morning_brief_task.cancel()
         try:
             await poll_task
         except asyncio.CancelledError:
@@ -217,6 +264,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             pass
         try:
             await reminder_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await morning_brief_task
         except asyncio.CancelledError:
             pass
         await registry.aclose()

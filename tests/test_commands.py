@@ -262,3 +262,19 @@ async def test_review_reports_open_tasks(pool, crypto):
     reply = provider.sent[-1][1]
     assert "کارهای باز: 1" in reply
     assert "buy milk" in reply
+
+
+async def test_brief_reports_capacity_capped_tasks(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO items (type, title, decision, score) "
+            "VALUES ('task', 'buy milk', 'do_now', 20)"
+        )
+
+    await handle_update(make_text_update(1, 999, "/brief"), ctx)
+
+    reply = provider.sent[-1][1]
+    assert "خلاصه صبح" in reply
+    assert "buy milk" in reply

@@ -62,7 +62,13 @@ against every other open item, and if one is close enough, the immediate
 announcement and `items.meta.possible_duplicate_of` both say so —
 configurable via `dedup.enabled` in the admin UI ("موارد تکراری"). It
 never blocks the capture, only flags it (see "Duplicate detection via
-embeddings" in `ARCHITECTURE.md`). No goals defined yet? That's fine — it
+embeddings" in `ARCHITECTURE.md`). **And there's a capacity-capped
+morning brief**: `/brief` (or automatically, once `morning_brief.
+auto_enabled` is turned on) ranks open tasks by urgency and score, then
+shows only as many as fit today's rough capacity slice —
+`constitution.weekly_capacity_hours / 7` — with the rest summarized as
+"+N more waiting," instead of the full list (see "Capacity-capped
+morning brief" in `ARCHITECTURE.md`). No goals defined yet? That's fine — it
 falls back to general judgment until you fill them in. See
 `ARCHITECTURE.md`'s "Constitution-driven scoring"
 section for exactly how. **And the decision reaches you immediately** —
