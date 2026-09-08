@@ -1,4 +1,4 @@
-# araz-agent — Personal Capture + Triage + Task + Search + Review + Admin Browser Layer (Phase 6)
+# araz-agent — Personal Capture + Triage + Task + Search + Review + Admin Browser Layer (Phase 7)
 
 Single-user capture assistant for the Bale messenger. Receives text and voice
 notes, transcribes voice via AvalAI, classifies each capture into a typed
@@ -15,11 +15,14 @@ embedded once (`pgvector`), and `/search <query>` finds the nearest items by
 meaning, not just keyword. Phase 5 added a periodic review: `/review` on
 demand any time, plus an optional once-a-day automatic summary (off by
 default — turn on `review.auto_enabled` and set `review.send_time` in the
-admin UI). **Phase 6 adds an item browser to the admin UI** (`/admin/items`):
+admin UI). Phase 6 added an item browser to the admin UI (`/admin/items`):
 filter by type/status, edit a title, toggle open/done, and a small overview
 (counts by type/status, a 7-day capture chart) — no bot needed to see or fix
-what triage produced. No planning or scoring logic yet; see `FUTURE.md` for
-what's still deferred.
+what triage produced. **Phase 7 hardened reliability**: the triage and
+embedding LLM calls now retry transient AvalAI failures instead of waiting
+for the 10-minute recovery sweep (see `ARCHITECTURE.md` for a real bug this
+turned up and fixed in the retry logic itself). No planning or scoring logic
+yet; see `FUTURE.md` for what's still deferred.
 
 > Status: skeleton under active development. Sections below are being filled
 > in as each part of the system lands (see commit history / PR).

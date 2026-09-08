@@ -218,3 +218,43 @@ attacker redirecting their own browser on their own session) is minimal.
 Deliberately out of scope: bulk actions, deleting an item, restoring a
 deleted item, and any chart beyond the one simple 7-day bar — see
 `FUTURE.md`.
+
+## Phase 7: hardening — retries, scoped to what's actually needed
+
+The original roadmap sketched Phase 7 as "operational hardening": a real
+background job queue, a distributed rate limiter, Prometheus metrics. All
+three assume multiple processes or an external consumer this deployment
+doesn't have — one Coolify container, no Prometheus/Grafana pointed at it
+anywhere. Building them now would be hardening against a failure mode
+that doesn't exist yet, at the cost of new infrastructure (Redis, a
+metrics scraper) nobody runs. FUTURE.md keeps all three explicitly
+deferred, with the reasoning spelled out there rather than just repeated.
+
+What *is* a real, already-observed gap: `app/llm.py`'s two background-job
+LLM calls — `classify_capture` (Phase 2) and `embed_text` (Phase 4) — made
+no retry attempt at all, unlike transcription, which has retried transient
+AvalAI failures (`app/retry.py`, née `app/transcribe/retry.py`) since
+Phase 1. A single dropped connection meant waiting for
+`app.recovery`'s 10-minute sweep instead of just trying again in a few
+seconds. Phase 7 moved that retry helper to `app/retry.py` (it's no
+longer transcription-specific) and wired it into both functions.
+
+Auditing that helper while extending its use turned up a real bug, live
+in production since Phase 1: `is_transient()` treated `httpx.
+TimeoutException`/`NetworkError` as retryable, but the openai SDK — the
+only HTTP client every call site here uses — never lets a raw httpx
+network or timeout error escape; it wraps them in its own
+`APIConnectionError`/`APITimeoutError`, neither of which is an httpx
+exception or carries a `status_code`. So the one failure mode retries
+exist for — the connection dropping or timing out — was silently never
+retried; only explicit 429/5xx *responses* were. Fixed by checking for
+`openai.APIConnectionError` directly (it covers `APITimeoutError`, a
+subclass). `app/retry.py` also gained direct unit tests (`tests/
+test_retry.py`) — previously it was exercised only through a stubbed
+transcription backend that bypassed the real retry path entirely, so this
+bug had no test that could have caught it.
+
+`test_chat_connection` (the admin "test connection" button) deliberately
+does **not** retry — a human is watching a spinner for that one, and
+turning a broken config into a 40-second wait before showing the error is
+worse than showing it immediately.

@@ -1,7 +1,13 @@
 """AvalAI chat client. Phase 1 used this only for the admin "test connection"
-health check. Phase 2 adds classify_capture(), the one LLM call made on
-captured content (see app/triage.py) — everything else in the app still
-treats captured text as opaque.
+health check. Phase 2 added classify_capture(), the one LLM call made on
+captured content (see app/triage.py); Phase 4 added embed_text() (see
+app/embeddings.py). Everything else in the app still treats captured text
+as opaque.
+
+classify_capture() and embed_text() retry transient failures (app.retry,
+Phase 7) since they run as background jobs where a few extra seconds is
+free — test_chat_connection() deliberately does not, since a human is
+watching a spinner waiting for that one.
 """
 
 from __future__ import annotations
@@ -13,6 +19,7 @@ from datetime import datetime
 
 from openai import AsyncOpenAI
 
+from app.retry import call_with_retries
 from app.tz import TEHRAN
 
 logger = logging.getLogger(__name__)
@@ -62,14 +69,18 @@ async def classify_capture(base_url: str, api_key: str, model: str, text: str) -
     client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=30)
     try:
         today = datetime.now(TEHRAN).date().isoformat()
-        resp = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": _TRIAGE_SYSTEM_PROMPT.format(today=today)},
-                {"role": "user", "content": text},
-            ],
-            temperature=0,
-        )
+
+        async def call():
+            return await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": _TRIAGE_SYSTEM_PROMPT.format(today=today)},
+                    {"role": "user", "content": text},
+                ],
+                temperature=0,
+            )
+
+        resp = await call_with_retries(call)
         content = resp.choices[0].message.content or ""
     except Exception as exc:  # noqa: BLE001 - degrade, never drop
         logger.warning("triage classification call failed: %s", exc)
@@ -93,7 +104,11 @@ async def embed_text(base_url: str, api_key: str, model: str, text: str) -> list
     """
     client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=30)
     try:
-        resp = await client.embeddings.create(model=model, input=text[:8000])
+
+        async def call():
+            return await client.embeddings.create(model=model, input=text[:8000])
+
+        resp = await call_with_retries(call)
         return resp.data[0].embedding
     except Exception as exc:  # noqa: BLE001 - degrade, never drop
         logger.warning("embedding call failed: %s", exc)

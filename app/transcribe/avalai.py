@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from openai import AsyncOpenAI
 
-from app.transcribe.retry import call_with_retries
+from app.retry import call_with_retries
 
 
 class AvalAITranscriber:
