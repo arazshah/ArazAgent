@@ -237,6 +237,11 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
             _get_session_cookie(request) or "",
             str(form.get("csrf_token", "")),
         ):
+            logger.warning(
+                "settings submit rejected: bad csrf token group=%s ip=%s",
+                group_name,
+                client_ip(request, boot.trust_proxy_headers),
+            )
             return PlainTextResponse("bad csrf token", status_code=400)
 
         ip = client_ip(request, boot.trust_proxy_headers)
@@ -258,6 +263,12 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
             await settings.set(spec.key, cleaned, actor_ip=ip)
 
         if errors:
+            logger.warning(
+                "settings submit rejected: field validation errors group=%s errors=%s ip=%s",
+                group_name,
+                errors,
+                ip,
+            )
             groups = {name: await _build_group_context(settings, name, {}) for name in GROUPS}
             groups[group_name] = await _build_group_context(settings, group_name, errors)
             return templates.TemplateResponse(
