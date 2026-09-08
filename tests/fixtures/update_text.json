@@ -1,0 +1,11 @@
+{
+  "_comment": "PROVISIONAL: Telegram-shaped guess, not yet verified against a real Bale bot. Replace once scripts/probe_bale.py output is available.",
+  "update_id": 100001,
+  "message": {
+    "message_id": 501,
+    "date": 1717000000,
+    "chat": {"id": 12345, "type": "private"},
+    "from": {"id": 999, "is_bot": false, "first_name": "Araz"},
+    "text": "buy milk"
+  }
+}

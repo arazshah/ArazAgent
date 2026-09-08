@@ -1,0 +1,16 @@
+{
+  "_comment": "PROVISIONAL: Telegram-shaped guess, not yet verified against a real Bale bot.",
+  "update_id": 100002,
+  "message": {
+    "message_id": 502,
+    "date": 1717000010,
+    "chat": {"id": 12345, "type": "private"},
+    "from": {"id": 999, "is_bot": false, "first_name": "Araz"},
+    "voice": {
+      "file_id": "AwADBAADbXXXXXXXXXXXXXXXXXXXXXXX",
+      "file_unique_id": "AgADbXXXXXXXXXXXXXXXXXXXXXXX",
+      "duration": 7,
+      "mime_type": "audio/ogg"
+    }
+  }
+}

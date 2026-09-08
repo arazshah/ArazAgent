@@ -1,0 +1,5 @@
+{
+  "_comment": "Not a valid Bale/Telegram update at all — used to test that parse failures never crash capture.",
+  "unexpected": "shape",
+  "message": "not-an-object"
+}
