@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from psycopg_pool import AsyncConnectionPool
 
+from app.decisions_log import apply_status_change
+
 VALID_TYPES = ("task", "note", "idea", "event")
 VALID_STATUSES = ("open", "done")
 
@@ -92,13 +94,11 @@ async def captured_per_day(
 
 
 async def set_item_status(pool: AsyncConnectionPool, item_id: int, status: str) -> bool:
-    async with pool.connection() as conn:
-        cur = await conn.execute(
-            "UPDATE items SET status = %s, updated_at = now() WHERE id = %s RETURNING id",
-            (status, item_id),
-        )
-        row = await cur.fetchone()
-    return row is not None
+    """Toggling to "done" here also feeds the calibration loop (see
+    app.decisions_log) — the admin item browser is a call site of
+    apply_status_change, not a separate status-setting path.
+    """
+    return await apply_status_change(pool, item_id, status) is not None
 
 
 async def set_item_title(pool: AsyncConnectionPool, item_id: int, title: str) -> bool:

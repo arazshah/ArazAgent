@@ -18,9 +18,13 @@ options offered after each phase:
 - A real `goals` table with an admin CRUD page, once goals stabilize —
   `constitution.goals` is one delimited settings string on purpose, to
   avoid building a goals UI before the goals themselves are known.
-- A decisions_log / calibration loop: recording every time the user
-  overrides a `decision` (e.g. closes something marked "decline") so the
-  scoring can eventually be tuned toward the user's actual judgment.
+- Actually *using* `decisions_log` (built — see ARCHITECTURE.md's
+  "Calibration loop" section) to tune anything: today it only records
+  overrides (completing something marked "decline"/"archive") and shows
+  them on the admin item browser. Nothing reads the log to adjust
+  `constitution.goals`/`constitution.hard_rules` or the scoring prompt —
+  that calibration pass is still a human looking at the list, not
+  automated.
 - Commitments to other people tracked separately from personal tasks
   (higher-stakes, since breaking one costs trust) — everything today is
   one undifferentiated `items` table.

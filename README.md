@@ -46,9 +46,13 @@ the model must name a real open item to drop or defer whenever it answers
 "do it now" — no trade-off named, no "do it now"; a slip-through is
 downgraded to "schedule" the same way the capacity guard works, so the
 list can no longer only ever grow (see "Mandatory trade-off" in
-`ARCHITECTURE.md`). No goals defined yet? That's fine — it falls
-back to general judgment until
-you fill them in. See `ARCHITECTURE.md`'s "Constitution-driven scoring"
+`ARCHITECTURE.md`). **And it starts learning from your real behavior**:
+completing an item the gatekeeper had said to "decline" or "archive" is
+now logged as an override (`decisions_log` — see "Calibration loop" in
+`ARCHITECTURE.md`), with a running count and the most recent overrides
+visible on the admin item browser. No goals defined yet? That's fine — it
+falls back to general judgment until you fill them in. See
+`ARCHITECTURE.md`'s "Constitution-driven scoring"
 section for exactly how. **And the decision reaches you immediately** —
 right after "✅ captured," a second message announces the type, decision,
 score, reason, and (when relevant) what to drop instead, whether the

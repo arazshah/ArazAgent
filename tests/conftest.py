@@ -28,7 +28,9 @@ async def pool():
     await apply_schema(p)
     yield p
     async with p.connection() as conn:
-        await conn.execute("TRUNCATE inbox, app_settings, settings_audit, items RESTART IDENTITY")
+        await conn.execute(
+            "TRUNCATE inbox, app_settings, settings_audit, items, decisions_log RESTART IDENTITY"
+        )
     await p.close()
 
 

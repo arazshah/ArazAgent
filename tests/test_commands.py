@@ -125,6 +125,27 @@ async def test_done_marks_task_closed(pool, crypto):
     assert status == "done"
 
 
+async def test_done_on_declined_item_logs_override(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "INSERT INTO items (type, title, decision, score) "
+            "VALUES ('task', 'do it anyway', 'decline', 5) RETURNING id"
+        )
+        (item_id,) = await cur.fetchone()
+
+    await handle_update(make_text_update(1, 999, f"/done {item_id}"), ctx)
+
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT decision, score, override_action FROM decisions_log WHERE item_id = %s",
+            (item_id,),
+        )
+        row = await cur.fetchone()
+    assert row == ("decline", 5, "completed_despite_decline")
+
+
 async def test_done_unknown_id_reports_not_found(pool, crypto):
     ctx, provider = _ctx(pool, crypto)
     await ctx.settings.set("bale.allowed_user_ids", "999")

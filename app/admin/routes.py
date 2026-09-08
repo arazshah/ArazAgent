@@ -20,6 +20,7 @@ from app import items_view, tz
 from app.admin.forms import GROUPS
 from app.bootstrap import Bootstrap
 from app.db import check_ready
+from app.decisions_log import count_overrides, recent_overrides
 from app.jalali import format_deadline
 from app.labels import DECISION_LABELS, TYPE_LABELS
 from app.llm import test_chat_connection
@@ -578,6 +579,8 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
                 ),
                 "daily": daily,
                 "max_daily": max_daily,
+                "override_count": await count_overrides(pool),
+                "recent_overrides": await recent_overrides(pool),
             },
         )
 

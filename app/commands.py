@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app import tz
+from app.decisions_log import apply_status_change
 from app.embeddings import search_items
 from app.jalali import format_deadline
 from app.labels import DECISION_LABELS, TYPE_LABELS
@@ -161,21 +162,16 @@ async def _mark_done(msg: IncomingMessage, ctx: CaptureContext) -> None:
         return
 
     item_id = int(parts[1])
-    async with ctx.pool.connection() as conn:
-        cur = await conn.execute(
-            "UPDATE items SET status = 'done', updated_at = now() "
-            "WHERE id = %s AND status != 'done' RETURNING title",
-            (item_id,),
-        )
-        row = await cur.fetchone()
+    result = await apply_status_change(ctx.pool, item_id, "done", only_if_status_differs=True)
 
-    if row is None:
+    if result is None:
         await ctx.provider.send_message(
             msg.chat_id, f"آیتم #{item_id} پیدا نشد یا قبلاً بسته شده است."
         )
         return
 
-    await ctx.provider.send_message(msg.chat_id, f"✅ بسته شد: {row[0]}")
+    title, _decision, _score = result
+    await ctx.provider.send_message(msg.chat_id, f"✅ بسته شد: {title}")
 
 
 async def _search(msg: IncomingMessage, ctx: CaptureContext) -> None:

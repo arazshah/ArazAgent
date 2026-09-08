@@ -96,3 +96,18 @@ ALTER TABLE items ADD COLUMN IF NOT EXISTS reminded_at timestamptz;
 -- computed alongside `decision` (do_now/schedule/delegate/archive/decline
 -- — see app.llm.VALID_DECISIONS) at triage time.
 ALTER TABLE items ADD COLUMN IF NOT EXISTS score int;
+
+-- Calibration loop (app/decisions_log.py): recorded whenever the user's
+-- real action contradicts the gatekeeper — today, specifically, completing
+-- an item the model had decided to "decline" or "archive". Raw material
+-- for eventually tuning scoring/hard-rules toward the user's actual
+-- judgment, not itself a feedback mechanism yet — see FUTURE.md.
+CREATE TABLE IF NOT EXISTS decisions_log (
+  id              bigserial PRIMARY KEY,
+  item_id         bigint NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  decision        text NOT NULL,
+  score           int,
+  override_action text NOT NULL,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS decisions_log_item_id ON decisions_log (item_id);

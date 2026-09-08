@@ -42,6 +42,34 @@
 </section>
 
 <section class="card">
+  <div class="card-header"><h2>🎯 کالیبراسیون</h2></div>
+  <p class="hint">
+    هر بار که چیزی را که دروازه‌بان «رد» یا «بایگانی» کرده بود، بااین‌حال
+    انجام دادی، این‌جا ثبت می‌شود — داده‌ی خام برای تنظیم بعدی امتیازدهی.
+  </p>
+  <div class="stat-grid">
+    <div class="stat-tile {{ 'warn' if override_count else '' }}">
+      <div class="stat-value">{{ override_count }}</div>
+      <div class="stat-label">نادیده‌گرفتن دروازه‌بان</div>
+    </div>
+  </div>
+  {% if recent_overrides %}
+  <div class="item-list">
+    {% for item_id, title, decision, score, override_action, created_at in recent_overrides %}
+    <div class="item-row">
+      <div class="item-meta">
+        <span class="badge badge-default">{{ decision_labels.get(decision, decision) }}</span>
+        {% if score is not none %}<span class="hint">امتیاز {{ score }}</span>{% endif %}
+        <span>{{ title }}</span>
+        <span class="item-id">#{{ item_id }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
   <div class="card-header"><h2>🔍 فیلتر</h2></div>
   <form method="get" action="{{ admin_path }}/items" class="toolbar">
     <select name="type">

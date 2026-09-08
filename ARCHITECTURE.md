@@ -509,3 +509,42 @@ Type and decision labels (the emoji + Persian text like "🟢 همین حالا"
 used to live as separate near-identical dicts in `app/commands.py` and
 `app/admin/routes.py`. Since the announcement needed the same labels a
 third time, they're now one shared `app/labels.py`.
+
+## Calibration loop: decisions_log
+
+`items.decision`/`items.score` are the gatekeeper's call *at capture
+time*. What the user actually does with the item afterward is the real
+signal — and until now nothing recorded when those two disagreed. If the
+model said `"decline"` or `"archive"` and the user closed the item anyway,
+that is exactly the kind of disagreement a future calibration pass (tuning
+`constitution.goals`/`constitution.hard_rules`, or the scoring prompt
+itself) would want real data on. `app/decisions_log.py` records it —
+nothing consumes the log automatically yet, this is only the recording
+half:
+
+```
+ app.commands._mark_done (/done)  ──┐
+                                     ├──▶ app.decisions_log.apply_status_change(pool, item_id, "done", ...)
+ app.admin.routes.item_toggle  ─────┘         │
+   (items_view.set_item_status                │  UPDATE items SET status = 'done' ...
+    now delegates here)                       │  RETURNING title, decision, score
+                                               ▼
+                                  if decision in ("decline", "archive"):
+                                      INSERT INTO decisions_log (item_id, decision,
+                                          score, override_action="completed_despite_<decision>")
+```
+
+Both places `items.status` can become `"done"` — the bot's `/done`
+command and the admin item browser's toggle — now go through this one
+function, specifically so the detection can't be silently bypassed by a
+third call site added later. `"do_now"`/`"schedule"`/`"delegate"` ending
+in completion is not an override (that is the plan working as decided);
+only `"decline"`/`"archive"` count, per `OVERRIDDEN_DECISIONS`. Reopening
+an item (`"done"` → `"open"`) is not logged either — only the transition
+*to* `"done"` is the signal.
+
+The admin item browser (`/admin/items`) shows a "🎯 کالیبراسیون" card:
+the running override count and the most recent overrides (item title,
+decision, score), via `count_overrides`/`recent_overrides` — so the
+signal is visible without querying the database directly, even before
+anything automated reads it.
