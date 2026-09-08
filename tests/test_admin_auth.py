@@ -55,6 +55,13 @@ async def test_unauthenticated_settings_redirects_to_login(client):
     assert resp.headers["location"].endswith("/login")
 
 
+async def test_admin_pages_are_never_cached(client):
+    http, app = client
+    await app.state.settings.set("admin.password_hash", hash_password(PASSWORD))
+    resp = await http.get("/admin/login")
+    assert "no-store" in resp.headers["Cache-Control"]
+
+
 async def test_bad_password_returns_401_and_logs(client, caplog):
     http, app = client
     await app.state.settings.set("admin.password_hash", hash_password(PASSWORD))

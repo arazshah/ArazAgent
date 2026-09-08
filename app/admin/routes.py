@@ -448,4 +448,12 @@ def mount_admin(app: FastAPI, boot: Bootstrap) -> None:
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["Referrer-Policy"] = "no-referrer"
             response.headers["Content-Security-Policy"] = "default-src 'self'"
+            # CSRF tokens are bound to the session cookie value at render time.
+            # A cached copy of this page (browser disk cache or back-forward
+            # cache) can outlive a logout/login cycle and submit a token tied
+            # to a stale session, which the server correctly rejects with 400.
+            # Never let these pages be cached so the form is always fresh.
+            if not request.url.path.startswith(f"{boot.admin_path}/static"):
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+                response.headers["Pragma"] = "no-cache"
         return response
