@@ -539,6 +539,7 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
         pool = request.app.state.pool
         item_type = request.query_params.get("type") or ""
         status = request.query_params.get("status") or ""
+        only_commitments = request.query_params.get("commitments") == "1"
         if item_type not in items_view.VALID_TYPES:
             item_type = ""
         if status not in items_view.VALID_STATUSES:
@@ -549,8 +550,16 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
             page = 1
         offset = (page - 1) * items_view.PAGE_SIZE
 
-        rows = await items_view.list_items(pool, item_type or None, status or None, offset=offset)
-        total = await items_view.count_items(pool, item_type or None, status or None)
+        rows = await items_view.list_items(
+            pool,
+            item_type or None,
+            status or None,
+            offset=offset,
+            only_commitments=only_commitments,
+        )
+        total = await items_view.count_items(
+            pool, item_type or None, status or None, only_commitments=only_commitments
+        )
         total_pages = max((total + items_view.PAGE_SIZE - 1) // items_view.PAGE_SIZE, 1)
         daily = await items_view.captured_per_day(pool)
         max_daily = max((count for _, count in daily), default=0)
@@ -568,6 +577,7 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
                 "decision_labels": DECISION_LABELS,
                 "filter_type": item_type,
                 "filter_status": status,
+                "filter_commitments": only_commitments,
                 "page": page,
                 "total_pages": total_pages,
                 "total": total,
@@ -598,7 +608,8 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
             page = max(int(str(form.get("redirect_page", "1"))), 1)
         except ValueError:
             page = 1
-        return f"?type={item_type}&status={status}&page={page}"
+        commitments = "1" if str(form.get("redirect_commitments", "")) == "1" else ""
+        return f"?type={item_type}&status={status}&page={page}&commitments={commitments}"
 
     @router.post("/items/{item_id}/toggle")
     async def item_toggle(request: Request, item_id: int):

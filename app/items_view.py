@@ -17,7 +17,9 @@ PAGE_SIZE = 25
 DAILY_LOOKBACK_DAYS = 7
 
 
-def _where_clause(item_type: str | None, status: str | None) -> tuple[str, list[object]]:
+def _where_clause(
+    item_type: str | None, status: str | None, only_commitments: bool = False
+) -> tuple[str, list[object]]:
     clauses = []
     params: list[object] = []
     if item_type:
@@ -26,6 +28,8 @@ def _where_clause(item_type: str | None, status: str | None) -> tuple[str, list[
     if status:
         clauses.append("status = %s")
         params.append(status)
+    if only_commitments:
+        clauses.append("commitment_to IS NOT NULL")
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     return where, params
 
@@ -36,12 +40,14 @@ async def list_items(
     status: str | None,
     limit: int = PAGE_SIZE,
     offset: int = 0,
+    only_commitments: bool = False,
 ) -> list[tuple]:
-    where, params = _where_clause(item_type, status)
+    where, params = _where_clause(item_type, status, only_commitments)
     async with pool.connection() as conn:
         cur = await conn.execute(
             f"""
-            SELECT id, type, title, status, deadline, created_at, decision, score
+            SELECT id, type, title, status, deadline, created_at, decision, score,
+                   commitment_to
             FROM items
             {where}
             ORDER BY created_at DESC
@@ -52,8 +58,13 @@ async def list_items(
         return await cur.fetchall()
 
 
-async def count_items(pool: AsyncConnectionPool, item_type: str | None, status: str | None) -> int:
-    where, params = _where_clause(item_type, status)
+async def count_items(
+    pool: AsyncConnectionPool,
+    item_type: str | None,
+    status: str | None,
+    only_commitments: bool = False,
+) -> int:
+    where, params = _where_clause(item_type, status, only_commitments)
     async with pool.connection() as conn:
         cur = await conn.execute(f"SELECT count(*) FROM items {where}", params)
         row = await cur.fetchone()

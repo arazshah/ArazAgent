@@ -25,9 +25,11 @@ options offered after each phase:
   `constitution.goals`/`constitution.hard_rules` or the scoring prompt —
   that calibration pass is still a human looking at the list, not
   automated.
-- Commitments to other people tracked separately from personal tasks
-  (higher-stakes, since breaking one costs trust) — everything today is
-  one undifferentiated `items` table.
+- Anything beyond tagging+listing commitments (built — see
+  ARCHITECTURE.md's "Commitments to other people" section): no reminder
+  logic distinguishes a commitment from a personal task yet (same
+  once-only lead-time reminder for both), no escalation for an overdue
+  commitment, and no per-person view ("everything you owe علی").
 - A lightweight personal CRM (last-contact tracking, "you haven't talked
   to X in a while" nudges).
 - A content pipeline that turns finished technical work (e.g. commits,

@@ -1,6 +1,7 @@
-"""Bot commands: /start /today /stats /items /tasks /done /search /review.
-No admin commands over the bot — all configuration happens in the web UI,
-so a compromised messaging account can never change settings.
+"""Bot commands: /start /today /stats /items /tasks /done /search /review
+/commitments. No admin commands over the bot — all configuration happens
+in the web UI, so a compromised messaging account can never change
+settings.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ START_TEXT = (
     "/items برای دیدن آخرین آیتم‌های دسته‌بندی‌شده\n"
     "/tasks برای دیدن کارهای باز\n"
     "/done شماره برای بستن یک کار\n"
+    "/commitments برای دیدن تعهدهای باز به دیگران\n"
     "/search عبارت برای جست‌وجوی معنایی در آیتم‌ها\n"
     "/review برای مرور دوره‌ای"
 )
@@ -34,12 +36,14 @@ UNKNOWN_COMMAND_TEXT = "دستور ناشناخته."
 
 NO_ITEMS_TEXT = "هنوز هیچ آیتمی دسته‌بندی نشده است."
 NO_OPEN_TASKS_TEXT = "کار بازی وجود ندارد."
+NO_OPEN_COMMITMENTS_TEXT = "تعهد بازی به کسی ثبت نشده است."
 DONE_USAGE_TEXT = "استفاده: /done شماره (مثلاً /done 5)"
 SEARCH_USAGE_TEXT = "استفاده: /search عبارت جست‌وجو"
 NO_SEARCH_RESULTS_TEXT = "چیزی پیدا نشد."
 
 ITEMS_LIMIT = 10
 TASKS_LIMIT = 20
+COMMITMENTS_LIMIT = 20
 
 
 async def dispatch(msg: IncomingMessage, ctx: CaptureContext) -> None:
@@ -57,6 +61,8 @@ async def dispatch(msg: IncomingMessage, ctx: CaptureContext) -> None:
         await _items(msg, ctx)
     elif command == "tasks":
         await _tasks(msg, ctx)
+    elif command == "commitments":
+        await _commitments(msg, ctx)
     elif command == "done":
         await _mark_done(msg, ctx)
     elif command == "search":
@@ -149,6 +155,41 @@ async def _tasks(msg: IncomingMessage, ctx: CaptureContext) -> None:
             line += f" (تا {format_deadline(deadline)})"
         lines.append(line)
     lines.append("\nبرای بستن یک کار: /done شماره")
+
+    await ctx.provider.send_message(msg.chat_id, "\n".join(lines))
+
+
+async def _commitments(msg: IncomingMessage, ctx: CaptureContext) -> None:
+    """Commitments to other people are the same `items` rows as everything
+    else, just tagged with commitment_to (see app/triage.py) — this is a
+    dedicated view, not a separate table, specifically so they're never
+    buried in the general task list: breaking a promise to someone else
+    costs trust in a way a missed personal task doesn't.
+    """
+    assert msg.chat_id is not None
+    async with ctx.pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            SELECT id, title, deadline, commitment_to FROM items
+            WHERE status = 'open' AND commitment_to IS NOT NULL
+            ORDER BY deadline NULLS LAST, created_at
+            LIMIT %s
+            """,
+            (COMMITMENTS_LIMIT,),
+        )
+        rows = await cur.fetchall()
+
+    if not rows:
+        await ctx.provider.send_message(msg.chat_id, NO_OPEN_COMMITMENTS_TEXT)
+        return
+
+    lines = ["تعهدهای باز به دیگران:"]
+    for item_id, title, deadline, commitment_to in rows:
+        line = f"#{item_id} 🤝 {commitment_to} — {title}"
+        if deadline is not None:
+            line += f" (تا {format_deadline(deadline)})"
+        lines.append(line)
+    lines.append("\nبرای بستن یک مورد: /done شماره")
 
     await ctx.provider.send_message(msg.chat_id, "\n".join(lines))
 

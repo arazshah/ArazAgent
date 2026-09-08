@@ -122,6 +122,7 @@ def _format_decision_announcement(
     score: int | None,
     decision_reason: str | None,
     what_to_drop: str | None,
+    commitment_to: str | None,
 ) -> str:
     type_label = TYPE_LABELS.get(item_type, item_type)
     decision_label = DECISION_LABELS.get(decision, decision)
@@ -132,6 +133,8 @@ def _format_decision_announcement(
         lines.append(f"دلیل: {decision_reason}")
     if what_to_drop:
         lines.append(f"به‌جاش کنار بذار: {what_to_drop}")
+    if commitment_to:
+        lines.append(f"🤝 تعهد به: {commitment_to}")
     return "\n".join(lines)
 
 
@@ -187,14 +190,15 @@ async def triage_inbox_row(
     )
     if capacity_capped:
         meta["capacity_capped"] = True
+    commitment_to = _clean_text(result.get("commitment_to"))
 
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
             INSERT INTO items (
                 inbox_id, type, title, project, goal_key, effort_minutes,
-                deadline, score, decision, decision_reason, meta
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                deadline, score, decision, decision_reason, meta, commitment_to
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
             RETURNING id
             """,
             (
@@ -209,6 +213,7 @@ async def triage_inbox_row(
                 decision,
                 decision_reason,
                 json.dumps(meta),
+                commitment_to,
             ),
         )
         row = await cur.fetchone()
@@ -221,7 +226,7 @@ async def triage_inbox_row(
 
     if notify is not None:
         announcement = _format_decision_announcement(
-            item_id, item_type, title, decision, score, decision_reason, what_to_drop
+            item_id, item_type, title, decision, score, decision_reason, what_to_drop, commitment_to
         )
         try:
             await notify(announcement)

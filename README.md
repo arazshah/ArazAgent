@@ -50,7 +50,13 @@ list can no longer only ever grow (see "Mandatory trade-off" in
 completing an item the gatekeeper had said to "decline" or "archive" is
 now logged as an override (`decisions_log` — see "Calibration loop" in
 `ARCHITECTURE.md`), with a running count and the most recent overrides
-visible on the admin item browser. No goals defined yet? That's fine — it
+visible on the admin item browser. **And promises to other people are
+tracked separately from your own to-dos**: triage now tags a captured
+item with who it's owed to (`items.commitment_to`) whenever the text
+describes a specific promise to a specific person — visible via the new
+`/commitments` bot command, a `🤝` badge in the admin item browser, and a
+"فقط تعهدها" filter there (see "Commitments to other people" in
+`ARCHITECTURE.md`). No goals defined yet? That's fine — it
 falls back to general judgment until you fill them in. See
 `ARCHITECTURE.md`'s "Constitution-driven scoring"
 section for exactly how. **And the decision reaches you immediately** —

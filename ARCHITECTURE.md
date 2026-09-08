@@ -548,3 +548,33 @@ the running override count and the most recent overrides (item title,
 decision, score), via `count_overrides`/`recent_overrides` — so the
 signal is visible without querying the database directly, even before
 anything automated reads it.
+
+## Commitments to other people
+
+A promise to someone else and a personal to-do are not the same kind of
+risk — breaking the first costs trust, breaking the second only costs you
+a day. Rather than a second table (more triage code, more surfaces to
+keep in sync), a commitment is the same `items` row tagged with who it's
+owed to: `items.commitment_to`, a new key in the triage JSON schema
+(`app/llm.py`) the model fills in only when the captured text describes a
+specific promise to a specific other person ("تماس با علی فردا", "تحویل
+گزارش به مدیر پروژه") — `null` for anything that's just for the user.
+`app.triage.triage_inbox_row` passes it straight through (`_clean_text`,
+same as `project`/`goal_key`) with no extra validation, and the immediate
+decision announcement gets a line for it (`🤝 تعهد به: <name>`) when
+present.
+
+Visibility is two places, both additive — no new page:
+
+- **Bot**: `/commitments` (`app/commands.py`) lists open items where
+  `commitment_to IS NOT NULL`, ordered by deadline, the same shape as
+  `/tasks` but scoped to this one dimension.
+- **Admin item browser**: each row shows a `🤝 تعهد به <name>` badge when
+  set, and a "فقط تعهدها" checkbox filters the list to only those
+  (`items_view.list_items`/`count_items` grew an `only_commitments` flag
+  that adds `commitment_to IS NOT NULL` to the existing type/status
+  `WHERE` clause — one more filter dimension, not a parallel query path).
+
+Nothing about triage, scoring, capacity accounting, or the decision
+guards changes for a commitment — it's a label on top of the existing
+pipeline, not a fork of it.

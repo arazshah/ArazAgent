@@ -111,3 +111,13 @@ CREATE TABLE IF NOT EXISTS decisions_log (
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS decisions_log_item_id ON decisions_log (item_id);
+
+-- Commitments to other people (app/commitments.py): the same `items` row,
+-- but tagged with who it's owed to. Higher-stakes than a personal task —
+-- breaking a promise to someone else costs trust in a way a missed
+-- personal task doesn't — so it's tracked as a distinct, filterable
+-- dimension rather than a new table; everything else about the item
+-- (triage, status, capacity accounting) stays exactly the same.
+ALTER TABLE items ADD COLUMN IF NOT EXISTS commitment_to text;
+CREATE INDEX IF NOT EXISTS items_open_commitments
+  ON items (deadline) WHERE commitment_to IS NOT NULL AND status = 'open';

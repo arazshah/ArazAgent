@@ -93,6 +93,36 @@ async def test_items_page_filters_by_type(client, pool):
     assert "an idea" not in resp.text
 
 
+async def test_items_page_shows_commitment_badge(client, pool):
+    http, app = client
+    await _login(http, app)
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO items (type, title, decision, commitment_to) "
+            "VALUES ('task', 'send the report', 'do_now', 'علی')"
+        )
+
+    resp = await http.get("/admin/items")
+
+    assert "تعهد به علی" in resp.text
+
+
+async def test_items_page_filters_by_commitments_only(client, pool):
+    http, app = client
+    await _login(http, app)
+    await _insert_item(pool, "task", "personal task")
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO items (type, title, decision, commitment_to) "
+            "VALUES ('task', 'a promise', 'do_now', 'مریم')"
+        )
+
+    resp = await http.get("/admin/items", params={"commitments": "1"})
+
+    assert "a promise" in resp.text
+    assert "personal task" not in resp.text
+
+
 async def test_toggle_requires_csrf(client, pool):
     http, app = client
     await _login(http, app)

@@ -373,6 +373,7 @@ button.link {
 .badge-db { background: rgba(61, 220, 132, 0.15); color: var(--success); }
 .badge-env { background: rgba(232, 182, 76, 0.15); color: var(--warning); }
 .badge-default { background: var(--surface-3); color: var(--text-muted); border: 1px solid var(--border); }
+.badge-warning { background: var(--warning-bg); color: var(--warning); }
 
 .test-result {
   background: var(--surface-2);

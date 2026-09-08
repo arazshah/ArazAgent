@@ -224,6 +224,13 @@ async def _score_and_decision(pool, inbox_id: int):
         return await cur.fetchone()
 
 
+async def _commitment_to(pool, inbox_id: int):
+    async with pool.connection() as conn:
+        cur = await conn.execute("SELECT commitment_to FROM items WHERE inbox_id = %s", (inbox_id,))
+        (value,) = await cur.fetchone()
+    return value
+
+
 async def test_classify_capture_receives_constitution_context(pool, crypto, monkeypatch):
     settings = SettingsStore(pool, crypto)
     await _configure_llm(settings)
@@ -320,6 +327,56 @@ async def test_what_to_drop_instead_stored_in_meta(pool, crypto, monkeypatch):
 
     _score, _decision, meta = await _score_and_decision(pool, inbox_id)
     assert meta == {"what_to_drop_instead": "کار #12 رو کنار بذار"}
+
+
+async def test_commitment_to_is_stored(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x", "commitment_to": "علی"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    assert await _commitment_to(pool, inbox_id) == "علی"
+
+
+async def test_commitment_to_defaults_to_none(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    assert await _commitment_to(pool, inbox_id) is None
+
+
+async def test_announcement_includes_commitment_to(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "گزارش برای علی", "commitment_to": "علی"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    announcements = []
+
+    async def notify(message: str) -> None:
+        announcements.append(message)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk", notify=notify)
+
+    assert "تعهد به: علی" in announcements[0]
 
 
 def test_apply_capacity_guard_downgrades_do_now_when_capacity_spent():

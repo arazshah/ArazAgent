@@ -52,6 +52,31 @@ async def test_count_by_type_and_status(pool, crypto):
     assert await items_view.count_by_status(pool) == {"open": 2, "done": 1}
 
 
+async def test_list_items_only_commitments_filters_out_personal_items(pool, crypto):
+    await _insert_item(pool, "task", "personal task")
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO items (type, title, decision, commitment_to) "
+            "VALUES ('task', 'a promise', 'auto', 'علی')"
+        )
+
+    rows = await items_view.list_items(pool, None, None, only_commitments=True)
+
+    assert [r[2] for r in rows] == ["a promise"]
+
+
+async def test_count_items_only_commitments(pool, crypto):
+    await _insert_item(pool, "task", "personal task")
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO items (type, title, decision, commitment_to) "
+            "VALUES ('task', 'a promise', 'auto', 'علی')"
+        )
+
+    assert await items_view.count_items(pool, None, None, only_commitments=True) == 1
+    assert await items_view.count_items(pool, None, None) == 2
+
+
 async def test_set_item_status_updates_and_reports_success(pool, crypto):
     item_id = await _insert_item(pool)
 

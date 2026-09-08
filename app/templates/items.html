@@ -83,6 +83,10 @@
       <option value="open" {% if filter_status == "open" %}selected{% endif %}>open</option>
       <option value="done" {% if filter_status == "done" %}selected{% endif %}>done</option>
     </select>
+    <label>
+      <input type="checkbox" name="commitments" value="1" {% if filter_commitments %}checked{% endif %}>
+      🤝 فقط تعهدها
+    </label>
     <button type="submit" class="secondary">اعمال فیلتر</button>
   </form>
 </section>
@@ -100,6 +104,7 @@
       <span class="item-status {{ item[3] }}">{{ item[3] }}</span>
       {% if item[6] %}<span class="badge badge-default">{{ decision_labels.get(item[6], item[6]) }}</span>{% endif %}
       {% if item[7] is not none %}<span class="hint">امتیاز {{ item[7] }}</span>{% endif %}
+      {% if item[8] %}<span class="badge badge-warning">🤝 تعهد به {{ item[8] }}</span>{% endif %}
       {% if item[4] %}<span class="item-deadline">⏰ تا {{ item[4] | jalali }}</span>{% endif %}
       <span class="item-id">#{{ item[0] }}</span>
     </div>
@@ -108,6 +113,7 @@
       <input type="hidden" name="redirect_type" value="{{ filter_type }}">
       <input type="hidden" name="redirect_status" value="{{ filter_status }}">
       <input type="hidden" name="redirect_page" value="{{ page }}">
+      <input type="hidden" name="redirect_commitments" value="{{ '1' if filter_commitments else '' }}">
       <input type="text" name="title" value="{{ item[2] }}">
       <button type="submit" class="secondary small">ذخیره</button>
     </form>
@@ -116,6 +122,7 @@
       <input type="hidden" name="redirect_type" value="{{ filter_type }}">
       <input type="hidden" name="redirect_status" value="{{ filter_status }}">
       <input type="hidden" name="redirect_page" value="{{ page }}">
+      <input type="hidden" name="redirect_commitments" value="{{ '1' if filter_commitments else '' }}">
       <input type="hidden" name="new_status" value="{{ 'done' if item[3] == 'open' else 'open' }}">
       <button type="submit" class="{{ 'small' if item[3] == 'open' else 'secondary small' }}">{{ '✓ بستن' if item[3] == 'open' else '↺ بازکردن' }}</button>
     </form>
@@ -127,9 +134,9 @@
 {% if total_pages > 1 %}
 <section class="card">
   <div class="pagination">
-    {% if page > 1 %}<a href="{{ admin_path }}/items?type={{ filter_type }}&status={{ filter_status }}&page={{ page - 1 }}">‹ قبلی</a>{% endif %}
+    {% if page > 1 %}<a href="{{ admin_path }}/items?type={{ filter_type }}&status={{ filter_status }}&commitments={{ '1' if filter_commitments else '' }}&page={{ page - 1 }}">‹ قبلی</a>{% endif %}
     <span class="page-info">صفحه {{ page }} از {{ total_pages }}</span>
-    {% if page < total_pages %}<a href="{{ admin_path }}/items?type={{ filter_type }}&status={{ filter_status }}&page={{ page + 1 }}">بعدی ›</a>{% endif %}
+    {% if page < total_pages %}<a href="{{ admin_path }}/items?type={{ filter_type }}&status={{ filter_status }}&commitments={{ '1' if filter_commitments else '' }}&page={{ page + 1 }}">بعدی ›</a>{% endif %}
   </div>
 </section>
 {% endif %}

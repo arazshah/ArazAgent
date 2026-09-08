@@ -91,6 +91,54 @@ async def test_tasks_lists_only_open_tasks_ordered_by_deadline(pool, crypto):
     assert reply.index("sooner task") < reply.index("later task")
 
 
+async def _insert_commitment(
+    pool, title: str, commitment_to: str, deadline: str | None = None, status: str = "open"
+) -> int:
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "INSERT INTO items (type, title, decision, deadline, commitment_to, status) "
+            "VALUES ('task', %s, 'auto', %s, %s, %s) RETURNING id",
+            (title, deadline, commitment_to, status),
+        )
+        (item_id,) = await cur.fetchone()
+    return item_id
+
+
+async def test_commitments_lists_only_open_commitments_ordered_by_deadline(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+    await _insert_commitment(pool, "later promise", "علی", "2026-02-01")
+    await _insert_commitment(pool, "sooner promise", "مریم", "2026-01-01")
+    await _insert_item(pool, "task", "personal task")  # no commitment_to
+
+    await handle_update(make_text_update(1, 999, "/commitments"), ctx)
+
+    reply = provider.sent[-1][1]
+    assert "personal task" not in reply
+    assert "🤝 علی" in reply
+    assert "🤝 مریم" in reply
+    assert reply.index("sooner promise") < reply.index("later promise")
+
+
+async def test_commitments_excludes_done_commitments(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+    await _insert_commitment(pool, "closed promise", "علی", status="done")
+
+    await handle_update(make_text_update(1, 999, "/commitments"), ctx)
+
+    assert "تعهد بازی" in provider.sent[-1][1]
+
+
+async def test_commitments_empty_reports_nothing(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+
+    await handle_update(make_text_update(1, 999, "/commitments"), ctx)
+
+    assert "تعهد بازی" in provider.sent[-1][1]
+
+
 async def test_tasks_excludes_done_tasks(pool, crypto):
     ctx, provider = _ctx(pool, crypto)
     await ctx.settings.set("bale.allowed_user_ids", "999")
