@@ -64,6 +64,7 @@ async def test_get_group_returns_all_keys_in_group(pool, crypto):
         "llm.base_url",
         "llm.api_key",
         "llm.chat_model",
+        "llm.triage_enabled",
     }
 
 

@@ -65,6 +65,7 @@ _DEFS: list[SettingDef] = [
     ),
     SettingDef("llm.api_key", "llm", True, None, _env_var_for("llm.api_key")),
     SettingDef("llm.chat_model", "llm", False, "gpt-4o-mini", _env_var_for("llm.chat_model")),
+    SettingDef("llm.triage_enabled", "llm", False, "true", _env_var_for("llm.triage_enabled")),
     SettingDef(
         "transcription.backend",
         "transcription",

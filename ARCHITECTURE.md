@@ -1,10 +1,11 @@
 # Architecture
 
-Phase 1 is a capture layer. It has exactly one job: take anything the owner
-sends to a Bale bot (text, voice, forwards, documents) and get it into
-Postgres reliably, transcribing voice along the way. Nothing downstream of
-that — no triage, no classification, no LLM calls on captured content — is
-built yet.
+Phase 1 was a capture layer: take anything the owner sends to a Bale bot
+(text, voice, forwards, documents) and get it into Postgres reliably,
+transcribing voice along the way. Phase 2 adds exactly one step on top:
+classify each capture's text into a typed `items` row with a single LLM
+call (see "Phase 2: triage" below). Nothing beyond that — planning,
+scoring, scheduling, review — is built yet.
 
 ## Data flow
 
@@ -76,21 +77,42 @@ UI remains the primary way to configure a running instance. A 30-second
 cache with explicit invalidation on write keeps this cheap without making it
 stale for long.
 
-## Phase 2 hooks
+## Phase 2: triage
 
-Three things exist now specifically so Phase 2 (triage, planning, drafting)
-can be built without a schema migration or an architectural change:
+Every inbox row that has text — typed directly, or produced by voice
+transcription — is classified exactly once by the configured LLM
+(`app/llm.classify_capture`) into the `items` shape (type, title, project,
+goal_key, effort_minutes, deadline, decision, decision_reason). The call
+happens in `app/triage.triage_inbox_row`, on the same "never raise, never
+drop" contract as transcription:
 
-- **`inbox.processed_at`** — currently always `NULL` in Phase 1 (nothing
-  processes captures beyond transcription). Phase 2's triage step is
-  expected to set this when it has turned an inbox row into one or more
-  `items` rows, so `inbox_unprocessed` stays a meaningful "what still needs
-  triage" queue.
-- **The `items` table** — created by `db/schema.sql` now, written to by
-  nothing in Phase 1. Its shape (type, project, goal_key, effort_minutes,
-  deadline, decision, decision_reason, status, human_override) anticipates
-  the fields a triage/planning step will need to fill in.
-- **`app/llm.py`** — Phase 1 uses it only for the admin "test connection"
-  health check (a one-token completion). Phase 2's triage/classification
-  calls against captured content are expected to extend this module rather
-  than add a second LLM client.
+```
+ text capture ──────┐
+                     │ (background task, same as voice)
+ voice capture ──────┼──▶ app/triage.triage_inbox_row
+ (after transcript)  │      1. skip if llm.triage_enabled == "false"
+                     │      2. classify_capture() — one LLM call, JSON out
+                     │      3. INSERT items (decision = 'auto')
+                     │      4. UPDATE inbox SET processed_at = now()
+                     └──▶ any failure (LLM down, bad JSON, not configured):
+                          log a warning, leave processed_at NULL, return.
+                          app.recovery.recover_stuck_triage retries rows
+                          still unprocessed after 10 minutes.
+```
+
+Triage is scheduled as a background task right after the reply is sent for
+text/document captures (`app/capture.py`), and runs inline at the end of
+`app/transcribe/orchestrator.transcribe_voice_job` for voice, after the
+transcript is saved. `inbox.processed_at` is set **only** by triage — a
+transcript being `done` is not the same as the row being triaged, so
+`inbox_unprocessed` / `count_pending_triage` stay a meaningful "what still
+needs triage" queue.
+
+Reusing `app/llm.py` for both the admin "test connection" health check and
+`classify_capture` keeps there being exactly one LLM client in the app,
+using the same `llm.*` settings (base URL, key, model) configured once in
+the admin UI.
+
+Deliberately out of scope for Phase 2 (see `FUTURE.md`): an item browser or
+editor in the admin UI, human review/override of a triage decision,
+planning/scoring/scheduling on top of `items`, and embeddings/search.

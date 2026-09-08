@@ -58,6 +58,13 @@ def validate_nonempty(value: str) -> str:
     return value
 
 
+def validate_bool(value: str) -> str:
+    cleaned = value.strip().lower()
+    if cleaned not in ("true", "false"):
+        raise ValueError("باید true یا false باشد")
+    return cleaned
+
+
 @dataclass(frozen=True)
 class FieldSpec:
     key: str
@@ -79,6 +86,9 @@ GROUPS: dict[str, list[FieldSpec]] = {
         FieldSpec("llm.base_url", "آدرس پایه", False, validate_url),
         FieldSpec("llm.api_key", "کلید API", True, validate_nonempty),
         FieldSpec("llm.chat_model", "مدل گفتگو", False, validate_nonempty),
+        FieldSpec(
+            "llm.triage_enabled", "دسته‌بندی خودکار فعال باشد (true/false)", False, validate_bool
+        ),
     ],
     "transcription": [
         FieldSpec("transcription.backend", "بک‌اند رونویسی", False, validate_nonempty),

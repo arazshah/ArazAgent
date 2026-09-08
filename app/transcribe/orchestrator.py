@@ -17,6 +17,7 @@ from psycopg_pool import AsyncConnectionPool
 from app.providers.base import IncomingMessage, MessagingProvider
 from app.transcribe.avalai import AvalAITranscriber
 from app.transcribe.local import LocalTranscriber
+from app.triage import triage_inbox_row
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -106,19 +107,22 @@ async def transcribe_voice_job(
         await conn.execute(
             """
             UPDATE inbox SET raw_text = %s, transcript_status = 'done',
-                              transcript_backend = %s, processed_at = now()
+                              transcript_backend = %s
             WHERE id = %s
             """,
             (text, backend_name, inbox_id),
         )
 
-    if msg.chat_id is None:
-        return
+    if msg.chat_id is not None:
+        truncated = text[:500]
+        reply_text = f"#{inbox_id}: {truncated}"
+        edited = False
+        if reply_message_id is not None:
+            edited = await provider.edit_message_text(msg.chat_id, reply_message_id, reply_text)
+        if not edited:
+            await provider.send_message(msg.chat_id, reply_text)
 
-    truncated = text[:500]
-    reply_text = f"#{inbox_id}: {truncated}"
-    edited = False
-    if reply_message_id is not None:
-        edited = await provider.edit_message_text(msg.chat_id, reply_message_id, reply_text)
-    if not edited:
-        await provider.send_message(msg.chat_id, reply_text)
+    # Phase 2: classify the transcript into an `items` row. This sets
+    # inbox.processed_at on success — transcription completing is not the
+    # same as the row being triaged.
+    await triage_inbox_row(pool, settings, inbox_id, text)

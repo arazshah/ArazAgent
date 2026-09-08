@@ -19,6 +19,7 @@ from app.logsafe import install as install_log_redaction
 from app.providers.registry import ProviderRegistry
 from app.settings_store import SettingsStore
 from app.transcribe.orchestrator import transcribe_voice_job
+from app.triage import triage_inbox_row
 
 logging.basicConfig(level=logging.INFO)
 install_log_redaction()
@@ -78,6 +79,7 @@ def _build_capture_context(app: FastAPI, provider) -> CaptureContext:
         provider=provider,
         schedule_background=_schedule,
         transcribe_voice=getattr(app.state, "transcribe_voice", None),
+        triage=getattr(app.state, "triage", None),
     )
 
 
@@ -102,6 +104,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await transcribe_voice_job(app, inbox_id, msg, reply_message_id)
 
     app.state.transcribe_voice = _transcribe_voice
+
+    async def _triage(inbox_id: int, text: str | None) -> None:
+        await triage_inbox_row(pool, settings, inbox_id, text)
+
+    app.state.triage = _triage
 
     poll_task = asyncio.create_task(_polling_loop(app))
 

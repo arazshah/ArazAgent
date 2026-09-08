@@ -134,6 +134,29 @@ async def test_document_stores_caption_without_transcription(pool, crypto):
     assert "بدون رونویسی" in provider.sent[0][1]
 
 
+async def test_text_capture_schedules_triage(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await _set_allowed(ctx, "999")
+
+    calls = []
+
+    async def fake_triage(inbox_id: int, text: str | None) -> None:
+        calls.append((inbox_id, text))
+
+    ctx.triage = fake_triage
+
+    await handle_update(make_text_update(6, user_id=999, text="buy milk"), ctx)
+
+    async with pool.connection() as conn:
+        cur = await conn.execute("SELECT id FROM inbox")
+        (inbox_id,) = await cur.fetchone()
+
+    assert len(ctx.scheduled) == 1  # type: ignore[attr-defined]
+    for job in ctx.scheduled:  # type: ignore[attr-defined]
+        await job()
+    assert calls == [(inbox_id, "buy milk")]
+
+
 async def test_slash_command_does_not_create_inbox_row(pool, crypto):
     ctx, provider = _ctx(pool, crypto)
     await _set_allowed(ctx, "999")

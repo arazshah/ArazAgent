@@ -19,9 +19,10 @@ from app.bootstrap import load_bootstrap
 from app.crypto import Crypto
 from app.db import apply_schema, create_pool
 from app.providers.registry import ProviderRegistry
-from app.recovery import recover_stuck_transcriptions
+from app.recovery import recover_stuck_transcriptions, recover_stuck_triage
 from app.settings_store import SettingsStore
 from app.transcribe.orchestrator import transcribe_voice_job
+from app.triage import triage_inbox_row
 
 
 async def main() -> None:
@@ -46,12 +47,16 @@ async def main() -> None:
         print(f"oldest unprocessed: {int(age // 60)} minutes old")
     else:
         print("nothing unprocessed")
+    print(f"pending triage: {await tz.count_pending_triage(pool)}")
 
     if "--recover" in sys.argv:
-        print("\n--- recovering stuck pending transcriptions ---")
+        print("\n--- recovering stuck pending transcriptions and triage ---")
 
         async def _transcribe_voice(inbox_id, msg, reply_message_id):
             await transcribe_voice_job(app, inbox_id, msg, reply_message_id)
+
+        async def _triage(inbox_id, text):
+            await triage_inbox_row(pool, settings, inbox_id, text)
 
         app = SimpleNamespace(
             state=SimpleNamespace(
@@ -60,10 +65,13 @@ async def main() -> None:
                 bootstrap=boot,
                 registry=registry,
                 transcribe_voice=_transcribe_voice,
+                triage=_triage,
             )
         )
         recovered = await recover_stuck_transcriptions(app)
-        print(f"recovered: {recovered}")
+        triaged = await recover_stuck_triage(app)
+        print(f"recovered transcriptions: {recovered}")
+        print(f"recovered triage: {triaged}")
 
     await registry.aclose()
     await pool.close()

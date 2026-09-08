@@ -47,6 +47,17 @@ async def count_by_transcript_status(pool: AsyncConnectionPool) -> dict[str, int
     return {status: count for status, count in rows}
 
 
+async def count_pending_triage(pool: AsyncConnectionPool) -> int:
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT count(*) FROM inbox "
+            "WHERE processed_at IS NULL AND transcript_status IN ('n/a', 'done')"
+        )
+        row = await cur.fetchone()
+    assert row is not None
+    return row[0]
+
+
 async def oldest_unprocessed_age_seconds(pool: AsyncConnectionPool) -> float | None:
     async with pool.connection() as conn:
         cur = await conn.execute(

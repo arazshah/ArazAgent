@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from app.recovery import recover_stuck_transcriptions
+from app.recovery import recover_stuck_transcriptions, recover_stuck_triage
 from app.settings_store import SettingsStore
 from tests.fakes import FakeProvider, make_voice_update
 
@@ -85,3 +85,69 @@ async def test_no_transcribe_backend_configured_recovers_nothing(pool, crypto):
     )
     recovered = await recover_stuck_transcriptions(app)
     assert recovered == 0
+
+
+async def _insert_untriaged_row(
+    pool, source: str = "bale_text", transcript_status: str = "n/a", minutes_old: int = 15
+) -> int:
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            INSERT INTO inbox (source, raw_text, transcript_status, provider, captured_at)
+            VALUES (%s, 'buy milk', %s, 'bale', now() - (%s || ' minutes')::interval)
+            RETURNING id
+            """,
+            (source, transcript_status, minutes_old),
+        )
+        (inbox_id,) = await cur.fetchone()
+    return inbox_id
+
+
+def _fake_app_with_triage(pool):
+    calls: list[tuple[int, str | None]] = []
+
+    async def triage(inbox_id, text):
+        calls.append((inbox_id, text))
+
+    return SimpleNamespace(state=SimpleNamespace(pool=pool, triage=triage)), calls
+
+
+async def test_recovers_untriaged_rows_stuck_over_ten_minutes(pool, crypto):
+    app, calls = _fake_app_with_triage(pool)
+    inbox_id = await _insert_untriaged_row(pool, minutes_old=15)
+
+    triaged = await recover_stuck_triage(app)
+
+    assert triaged == 1
+    assert calls == [(inbox_id, "buy milk")]
+
+
+async def test_does_not_recover_recent_untriaged_rows(pool, crypto):
+    app, calls = _fake_app_with_triage(pool)
+    await _insert_untriaged_row(pool, minutes_old=2)
+
+    triaged = await recover_stuck_triage(app)
+
+    assert triaged == 0
+    assert calls == []
+
+
+async def test_does_not_recover_rows_still_pending_transcription(pool, crypto):
+    app, calls = _fake_app_with_triage(pool)
+    await _insert_untriaged_row(
+        pool, source="bale_voice", transcript_status="pending", minutes_old=15
+    )
+
+    triaged = await recover_stuck_triage(app)
+
+    assert triaged == 0
+    assert calls == []
+
+
+async def test_no_triage_handler_configured_recovers_nothing(pool, crypto):
+    await _insert_untriaged_row(pool, minutes_old=15)
+    app = SimpleNamespace(state=SimpleNamespace(pool=pool, triage=None))
+
+    triaged = await recover_stuck_triage(app)
+
+    assert triaged == 0

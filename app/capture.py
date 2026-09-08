@@ -20,6 +20,7 @@ from app.settings_store import SettingsStore
 logger = logging.getLogger(__name__)
 
 TranscribeJob = Callable[[int, IncomingMessage, int | None], Awaitable[None]]
+TriageJob = Callable[[int, str | None], Awaitable[None]]
 
 
 @dataclass
@@ -29,6 +30,7 @@ class CaptureContext:
     provider: MessagingProvider
     schedule_background: Callable[[Callable[[], Awaitable[None]]], None]
     transcribe_voice: TranscribeJob | None = None
+    triage: TriageJob | None = None
 
 
 async def handle_update(raw: dict, ctx: CaptureContext) -> None:
@@ -71,6 +73,17 @@ async def handle_update(raw: dict, ctx: CaptureContext) -> None:
         msg.kind,
         latency_ms,
     )
+
+
+def _schedule_triage(ctx: CaptureContext, inbox_id: int, text: str | None) -> None:
+    if ctx.triage is None:
+        return
+    triage = ctx.triage
+
+    async def run() -> None:
+        await triage(inbox_id, text)
+
+    ctx.schedule_background(run)
 
 
 async def _insert_inbox_row(
@@ -121,6 +134,7 @@ async def _handle_text(msg: IncomingMessage, ctx: CaptureContext) -> int | None:
         return None
     count = await tz.count_captured_today(ctx.pool)
     await ctx.provider.send_message(msg.chat_id, f"✅ #{inbox_id} · امروز {count}")
+    _schedule_triage(ctx, inbox_id, msg.text)
     return inbox_id
 
 
@@ -132,6 +146,7 @@ async def _handle_document(msg: IncomingMessage, ctx: CaptureContext) -> int | N
     if inbox_id is None:
         return None
     await ctx.provider.send_message(msg.chat_id, f"✅ #{inbox_id} (فایل — بدون رونویسی)")
+    _schedule_triage(ctx, inbox_id, msg.text)
     return inbox_id
 
 

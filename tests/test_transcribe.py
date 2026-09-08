@@ -82,6 +82,44 @@ async def test_successful_transcription_marks_done_and_replies(pool, crypto, tmp
     assert provider.edits == [(12345, 7, f"#{inbox_id}: buy milk tomorrow")]
 
 
+async def test_successful_transcription_triggers_triage(pool, crypto, tmp_path, monkeypatch):
+    """processed_at is Phase 2's to set, not transcription's — a completed
+    transcript still needs triage before the row counts as handled.
+    """
+    provider = FakeProvider()
+    app, settings = _fake_app(pool, crypto, tmp_path, provider)
+    await settings.set("transcription.backend", "avalai")
+
+    update = make_voice_update(9, 999)
+    msg = provider.parse_update(update)
+    inbox_id = await _insert_pending_row(pool, msg)
+
+    class _StubBackend:
+        async def transcribe(self, audio_bytes: bytes, language: str) -> str:
+            return "call the dentist tomorrow"
+
+    async def fake_build_backend(app):
+        return _StubBackend(), "avalai"
+
+    monkeypatch.setattr(orchestrator, "build_backend", fake_build_backend)
+
+    triaged = []
+
+    async def fake_triage(pool_, settings_, inbox_id_, text):
+        triaged.append((inbox_id_, text))
+
+    monkeypatch.setattr(orchestrator, "triage_inbox_row", fake_triage)
+
+    await orchestrator.transcribe_voice_job(app, inbox_id, msg, reply_message_id=None)
+
+    assert triaged == [(inbox_id, "call the dentist tomorrow")]
+
+    async with pool.connection() as conn:
+        cur = await conn.execute("SELECT processed_at FROM inbox WHERE id = %s", (inbox_id,))
+        (processed_at,) = await cur.fetchone()
+    assert processed_at is None  # triage (mocked here) is what would set it
+
+
 async def test_transcription_failure_marks_failed_and_keeps_audio(
     pool, crypto, tmp_path, monkeypatch
 ):

@@ -1,5 +1,6 @@
-"""Recovery for inbox rows stuck in transcript_status='pending', e.g. after a
-mid-transcription restart. A crude but sufficient recovery path — not a real
+"""Recovery for inbox rows stuck mid-pipeline: transcript_status='pending'
+after a mid-transcription restart, or processed_at IS NULL after a
+mid-triage restart. A crude but sufficient recovery path — not a real
 queue. Shared by the admin "recover" button and scripts/stats.py.
 """
 
@@ -54,3 +55,26 @@ async def recover_stuck_transcriptions(app: FastAPI) -> int:
         recovered += 1
 
     return recovered
+
+
+async def recover_stuck_triage(app: FastAPI) -> int:
+    pool = app.state.pool
+    triage = getattr(app.state, "triage", None)
+    if triage is None:
+        return 0
+
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            SELECT id, raw_text FROM inbox
+            WHERE processed_at IS NULL
+              AND transcript_status IN ('n/a', 'done')
+              AND captured_at < now() - interval '10 minutes'
+            """
+        )
+        rows = await cur.fetchall()
+
+    for inbox_id, raw_text in rows:
+        await triage(inbox_id, raw_text)
+
+    return len(rows)

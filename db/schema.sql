@@ -54,7 +54,9 @@ CREATE TABLE IF NOT EXISTS settings_audit (
   changed_at  timestamptz NOT NULL DEFAULT now()
 );
 
--- Phase 2 target. Created now, written to later.
+-- Written by app/triage.py (Phase 2): one row per inbox item the LLM
+-- classified. decision is always 'auto' for now; human_override/
+-- override_reason are reserved for a future manual-review UI.
 CREATE TABLE IF NOT EXISTS items (
   id              bigserial PRIMARY KEY,
   inbox_id        bigint REFERENCES inbox(id) ON DELETE SET NULL,
