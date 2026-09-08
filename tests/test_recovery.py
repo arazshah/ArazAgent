@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from app.recovery import recover_stuck_transcriptions, recover_stuck_triage
+from app import recovery
+from app.recovery import (
+    recover_missing_embeddings,
+    recover_stuck_transcriptions,
+    recover_stuck_triage,
+)
 from app.settings_store import SettingsStore
 from tests.fakes import FakeProvider, make_voice_update
 
@@ -151,3 +156,53 @@ async def test_no_triage_handler_configured_recovers_nothing(pool, crypto):
     triaged = await recover_stuck_triage(app)
 
     assert triaged == 0
+
+
+async def _insert_unembedded_item(pool, title: str = "buy milk", minutes_old: int = 15) -> int:
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            INSERT INTO items (type, title, decision, created_at)
+            VALUES ('note', %s, 'auto', now() - (%s || ' minutes')::interval)
+            RETURNING id
+            """,
+            (title, minutes_old),
+        )
+        (item_id,) = await cur.fetchone()
+    return item_id
+
+
+async def test_recovers_items_missing_embedding_over_ten_minutes(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    app = SimpleNamespace(state=SimpleNamespace(pool=pool, settings=settings))
+    item_id = await _insert_unembedded_item(pool, minutes_old=15)
+
+    calls = []
+
+    async def fake_embed_item(pool_, settings_, item_id_, text):
+        calls.append((item_id_, text))
+
+    monkeypatch.setattr(recovery, "embed_item", fake_embed_item)
+
+    embedded = await recover_missing_embeddings(app)
+
+    assert embedded == 1
+    assert calls == [(item_id, "buy milk")]
+
+
+async def test_does_not_recover_recently_created_unembedded_items(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    app = SimpleNamespace(state=SimpleNamespace(pool=pool, settings=settings))
+    await _insert_unembedded_item(pool, minutes_old=2)
+
+    calls = []
+
+    async def fake_embed_item(pool_, settings_, item_id_, text):
+        calls.append(item_id_)
+
+    monkeypatch.setattr(recovery, "embed_item", fake_embed_item)
+
+    embedded = await recover_missing_embeddings(app)
+
+    assert embedded == 0
+    assert calls == []

@@ -1,6 +1,6 @@
-"""Bot commands: /start /today /stats /items /tasks /done. No admin commands
-over the bot — all configuration happens in the web UI, so a compromised
-messaging account can never change settings.
+"""Bot commands: /start /today /stats /items /tasks /done /search. No admin
+commands over the bot — all configuration happens in the web UI, so a
+compromised messaging account can never change settings.
 """
 
 from __future__ import annotations
@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app import tz
+from app.embeddings import search_items
 from app.providers.base import IncomingMessage
 
 if TYPE_CHECKING:
@@ -20,7 +21,8 @@ START_TEXT = (
     "/today برای شمارش\n"
     "/items برای دیدن آخرین آیتم‌های دسته‌بندی‌شده\n"
     "/tasks برای دیدن کارهای باز\n"
-    "/done شماره برای بستن یک کار"
+    "/done شماره برای بستن یک کار\n"
+    "/search عبارت برای جست‌وجوی معنایی در آیتم‌ها"
 )
 
 UNKNOWN_COMMAND_TEXT = "دستور ناشناخته."
@@ -28,6 +30,8 @@ UNKNOWN_COMMAND_TEXT = "دستور ناشناخته."
 NO_ITEMS_TEXT = "هنوز هیچ آیتمی دسته‌بندی نشده است."
 NO_OPEN_TASKS_TEXT = "کار بازی وجود ندارد."
 DONE_USAGE_TEXT = "استفاده: /done شماره (مثلاً /done 5)"
+SEARCH_USAGE_TEXT = "استفاده: /search عبارت جست‌وجو"
+NO_SEARCH_RESULTS_TEXT = "چیزی پیدا نشد."
 
 ITEMS_LIMIT = 10
 TASKS_LIMIT = 20
@@ -52,6 +56,8 @@ async def dispatch(msg: IncomingMessage, ctx: CaptureContext) -> None:
         await _tasks(msg, ctx)
     elif command == "done":
         await _mark_done(msg, ctx)
+    elif command == "search":
+        await _search(msg, ctx)
     else:
         await ctx.provider.send_message(msg.chat_id, UNKNOWN_COMMAND_TEXT)
 
@@ -162,3 +168,27 @@ async def _mark_done(msg: IncomingMessage, ctx: CaptureContext) -> None:
         return
 
     await ctx.provider.send_message(msg.chat_id, f"✅ بسته شد: {row[0]}")
+
+
+async def _search(msg: IncomingMessage, ctx: CaptureContext) -> None:
+    assert msg.chat_id is not None
+    assert msg.text is not None
+    parts = msg.text.strip().split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await ctx.provider.send_message(msg.chat_id, SEARCH_USAGE_TEXT)
+        return
+
+    results = await search_items(ctx.pool, ctx.settings, parts[1].strip())
+    if not results:
+        await ctx.provider.send_message(msg.chat_id, NO_SEARCH_RESULTS_TEXT)
+        return
+
+    lines = ["نتایج جست‌وجو:"]
+    for item_id, title, item_type, deadline in results:
+        label = _TYPE_LABEL.get(item_type, f"• {item_type}")
+        line = f"#{item_id} {label} — {title}"
+        if deadline is not None:
+            line += f" (تا {deadline.isoformat()})"
+        lines.append(line)
+
+    await ctx.provider.send_message(msg.chat_id, "\n".join(lines))

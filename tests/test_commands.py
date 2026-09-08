@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app import commands
 from app.capture import CaptureContext, handle_update
 from app.settings_store import SettingsStore
 from tests.fakes import FakeProvider, make_text_update
@@ -139,3 +140,43 @@ async def test_done_without_id_shows_usage(pool, crypto):
     await handle_update(make_text_update(1, 999, "/done"), ctx)
 
     assert "استفاده" in provider.sent[-1][1]
+
+
+async def test_search_without_query_shows_usage(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+
+    await handle_update(make_text_update(1, 999, "/search"), ctx)
+
+    assert "استفاده" in provider.sent[-1][1]
+
+
+async def test_search_reports_results_from_search_items(pool, crypto, monkeypatch):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+
+    async def fake_search_items(pool_, settings_, query, limit=5):
+        assert query == "milk"
+        return [(7, "buy milk", "task", None)]
+
+    monkeypatch.setattr(commands, "search_items", fake_search_items)
+
+    await handle_update(make_text_update(1, 999, "/search milk"), ctx)
+
+    reply = provider.sent[-1][1]
+    assert "#7" in reply
+    assert "buy milk" in reply
+
+
+async def test_search_no_results(pool, crypto, monkeypatch):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+
+    async def fake_search_items(pool_, settings_, query, limit=5):
+        return []
+
+    monkeypatch.setattr(commands, "search_items", fake_search_items)
+
+    await handle_update(make_text_update(1, 999, "/search nonexistent"), ctx)
+
+    assert "پیدا نشد" in provider.sent[-1][1]

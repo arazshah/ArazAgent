@@ -193,6 +193,7 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
             "mode": await settings.get_mode(),
             "by_transcript_status": await tz.count_by_transcript_status(pool),
             "pending_triage": await tz.count_pending_triage(pool),
+            "missing_embeddings": await tz.count_missing_embeddings(pool),
         }
 
     @router.get("/settings", response_class=HTMLResponse)
@@ -436,12 +437,18 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
     async def recover(request: Request):
         if not await _require_session(request, boot, _settings(request)):
             return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
-        from app.recovery import recover_stuck_transcriptions, recover_stuck_triage
+        from app.recovery import (
+            recover_missing_embeddings,
+            recover_stuck_transcriptions,
+            recover_stuck_triage,
+        )
 
         transcribed = await recover_stuck_transcriptions(request.app)
         triaged = await recover_stuck_triage(request.app)
+        embedded = await recover_missing_embeddings(request.app)
         return RedirectResponse(
-            f"{boot.admin_path}/settings?flash=بازیابی+{transcribed}+رونویسی+و+{triaged}+دسته‌بندی",
+            f"{boot.admin_path}/settings?flash="
+            f"بازیابی+{transcribed}+رونویسی+و+{triaged}+دسته‌بندی+و+{embedded}+embedding",
             status_code=302,
         )
 

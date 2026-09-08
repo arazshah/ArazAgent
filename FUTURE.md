@@ -1,15 +1,14 @@
-# Future (deferred out of Phase 1/2 scope)
+# Future (deferred out of Phase 1-4 scope)
 
-Phase 1 was capture only; Phase 2 added triage/classification (see
+Phase 1 was capture only; Phase 2 added triage/classification; Phase 3
+added basic task open/close; Phase 4 added semantic search (see
 `ARCHITECTURE.md`). Anything below was identified as plausibly useful but
 explicitly out of scope for now — recorded here instead of built, so each
 phase stays small and reliable.
 
 - Scoring, planning, or scheduling logic.
 - A weekly review flow.
-- Embeddings / vector search over captures (the `vector` extension and the
-  `items` table exist in the schema already, unused, specifically so this
-  needs no migration when it lands).
+- Task priority, editing, or reopening a closed item from the bot.
 - An inbox browser or item editor in the admin UI.
 - Charts, dashboards, or a log viewer.
 - Multi-user support, OAuth, or 2FA.

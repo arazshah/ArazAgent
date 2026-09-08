@@ -89,6 +89,10 @@ GROUPS: dict[str, list[FieldSpec]] = {
         FieldSpec(
             "llm.triage_enabled", "دسته‌بندی خودکار فعال باشد (true/false)", False, validate_bool
         ),
+        FieldSpec("llm.embedding_model", "مدل embedding", False, validate_nonempty),
+        FieldSpec(
+            "llm.embedding_enabled", "جست‌وجوی معنایی فعال باشد (true/false)", False, validate_bool
+        ),
     ],
     "transcription": [
         FieldSpec("transcription.backend", "بک‌اند رونویسی", False, validate_nonempty),

@@ -132,3 +132,43 @@ Both live in `app/commands.py` and query the pool directly (no new module —
 the queries are simple enough not to warrant one). There is still no
 priority, no editing, and no way to reopen a closed item from the bot; see
 `FUTURE.md`.
+
+## Phase 4: semantic search
+
+Every `items` row gets an embedding, best-effort, right after triage
+creates it — same contract as everything else in this app: a failure never
+loses the item, it just leaves `items.embedding` NULL for
+`app.recovery.recover_missing_embeddings` to retry later.
+
+```
+ triage_inbox_row() inserts the items row
+        │
+        ▼
+ app/embeddings.embed_item(pool, settings, item_id, text)
+        │  1. skip if llm.embedding_enabled == "false"
+        │  2. app.llm.embed_text() — one embedding call
+        │  3. UPDATE items SET embedding = ...::vector
+        └──▶ any failure (LLM down, not configured, a dimension
+             mismatch after changing llm.embedding_model): log a
+             warning, leave embedding NULL, return.
+
+ /search <query> ──▶ app/embeddings.search_items()
+        │  embeds the query the same way, then
+        │  ORDER BY embedding <=> query_embedding LIMIT N
+        └──▶ any failure, or nothing embedded yet: empty list,
+             which the bot command reports as "nothing found" —
+             indistinguishable from a genuine no-match on purpose.
+```
+
+`items.embedding` is an **unconstrained** `vector` column (no fixed
+dimension), specifically so changing `llm.embedding_model` in the admin UI
+needs no migration. The tradeoff: every row compared with `<=>` must share
+one dimension, which holds as long as the model isn't changed on a
+populated table — changing it means old embeddings silently stop matching
+new queries (both still "work", they just never rank near each other).
+There is no ANN index (ivfflat/hnsw) — at personal-assistant volume a
+sequential scan is fast enough, and an ANN index needs a fixed dimension
+anyway.
+
+Reusing `app/llm.py` again (this time for `embed_text`) keeps the same
+single-LLM-client property Phase 2 established.

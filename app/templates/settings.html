@@ -76,6 +76,7 @@
   <p>نسخه: {{ status.git_sha }}</p>
   <p>حالت فعلی: {{ status.mode }}</p>
   <p>در انتظار دسته‌بندی: {{ status.pending_triage }}</p>
+  <p>بدون embedding: {{ status.missing_embeddings }}</p>
   <ul>
     {% for k, v in status.by_transcript_status.items() %}
     <li>{{ k }}: {{ v }}</li>

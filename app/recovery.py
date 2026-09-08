@@ -1,7 +1,8 @@
-"""Recovery for inbox rows stuck mid-pipeline: transcript_status='pending'
-after a mid-transcription restart, or processed_at IS NULL after a
-mid-triage restart. A crude but sufficient recovery path — not a real
-queue. Shared by the admin "recover" button and scripts/stats.py.
+"""Recovery for inbox/items rows stuck mid-pipeline: transcript_status=
+'pending' after a mid-transcription restart, inbox.processed_at IS NULL
+after a mid-triage restart, or items.embedding IS NULL after a mid-embedding
+restart. A crude but sufficient recovery path — not a real queue. Shared by
+the admin "recover" button and scripts/stats.py.
 """
 
 from __future__ import annotations
@@ -9,6 +10,8 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI
+
+from app.embeddings import embed_item
 
 logger = logging.getLogger(__name__)
 
@@ -76,5 +79,25 @@ async def recover_stuck_triage(app: FastAPI) -> int:
 
     for inbox_id, raw_text in rows:
         await triage(inbox_id, raw_text)
+
+    return len(rows)
+
+
+async def recover_missing_embeddings(app: FastAPI) -> int:
+    pool = app.state.pool
+    settings = app.state.settings
+
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            SELECT id, title FROM items
+            WHERE embedding IS NULL
+              AND created_at < now() - interval '10 minutes'
+            """
+        )
+        rows = await cur.fetchall()
+
+    for item_id, title in rows:
+        await embed_item(pool, settings, item_id, title)
 
     return len(rows)

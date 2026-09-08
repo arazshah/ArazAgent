@@ -58,6 +58,14 @@ async def count_pending_triage(pool: AsyncConnectionPool) -> int:
     return row[0]
 
 
+async def count_missing_embeddings(pool: AsyncConnectionPool) -> int:
+    async with pool.connection() as conn:
+        cur = await conn.execute("SELECT count(*) FROM items WHERE embedding IS NULL")
+        row = await cur.fetchone()
+    assert row is not None
+    return row[0]
+
+
 async def oldest_unprocessed_age_seconds(pool: AsyncConnectionPool) -> float | None:
     async with pool.connection() as conn:
         cur = await conn.execute(

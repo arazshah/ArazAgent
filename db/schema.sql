@@ -76,3 +76,12 @@ CREATE TABLE IF NOT EXISTS items (
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS items_open ON items (status, deadline);
+
+-- Phase 4: best-effort semantic search over items (app/embeddings.py).
+-- Unconstrained `vector` (no fixed dimension) rather than vector(1536) so
+-- app_settings' llm.embedding_model can change without a migration — every
+-- row must still share one dimension for `<=>` comparisons to work, which
+-- holds as long as the model isn't changed on a populated table. No ANN
+-- index (ivfflat/hnsw): at personal-assistant volume a sequential scan
+-- with `<=>` is fast enough, and an ANN index needs a fixed dimension.
+ALTER TABLE items ADD COLUMN IF NOT EXISTS embedding vector;

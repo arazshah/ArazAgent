@@ -12,6 +12,7 @@ from datetime import date
 
 from psycopg_pool import AsyncConnectionPool
 
+from app.embeddings import embed_item
 from app.llm import VALID_ITEM_TYPES, classify_capture
 from app.settings_store import SettingsStore
 
@@ -85,12 +86,13 @@ async def triage_inbox_row(
     title = (_clean_text(result.get("title")) or text.strip())[:MAX_TITLE_LENGTH]
 
     async with pool.connection() as conn:
-        await conn.execute(
+        cur = await conn.execute(
             """
             INSERT INTO items (
                 inbox_id, type, title, project, goal_key, effort_minutes,
                 deadline, decision, decision_reason
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'auto', %s)
+            RETURNING id
             """,
             (
                 inbox_id,
@@ -103,4 +105,10 @@ async def triage_inbox_row(
                 _clean_text(result.get("decision_reason")),
             ),
         )
+        row = await cur.fetchone()
+        assert row is not None
+        item_id = row[0]
         await conn.execute("UPDATE inbox SET processed_at = now() WHERE id = %s", (inbox_id,))
+
+    # Phase 4: best-effort — a failure here never undoes the item above.
+    await embed_item(pool, settings, item_id, text)

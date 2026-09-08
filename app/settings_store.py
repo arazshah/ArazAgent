@@ -67,6 +67,16 @@ _DEFS: list[SettingDef] = [
     SettingDef("llm.chat_model", "llm", False, "gpt-4o-mini", _env_var_for("llm.chat_model")),
     SettingDef("llm.triage_enabled", "llm", False, "true", _env_var_for("llm.triage_enabled")),
     SettingDef(
+        "llm.embedding_model",
+        "llm",
+        False,
+        "text-embedding-3-small",
+        _env_var_for("llm.embedding_model"),
+    ),
+    SettingDef(
+        "llm.embedding_enabled", "llm", False, "true", _env_var_for("llm.embedding_enabled")
+    ),
+    SettingDef(
         "transcription.backend",
         "transcription",
         False,
