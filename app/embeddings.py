@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SEARCH_LIMIT = 5
 
+# pgvector cosine distance: 0 = identical, 2 = opposite. Chosen empirically
+# for short Persian task/note titles rather than derived from anything —
+# tight enough that unrelated items essentially never trigger it, loose
+# enough to catch the same idea worded slightly differently.
+DEFAULT_DUPLICATE_THRESHOLD = 0.15
+
 
 def _to_vector_literal(embedding: list[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in embedding) + "]"
@@ -101,3 +107,48 @@ async def search_items(
     except Exception as exc:  # noqa: BLE001 - degrade, never crash the caller
         logger.warning("semantic search query failed: %s", exc)
         return []
+
+
+async def find_similar_open_item(
+    pool: AsyncConnectionPool,
+    item_id: int,
+    threshold: float = DEFAULT_DUPLICATE_THRESHOLD,
+) -> tuple[int, str, float] | None:
+    """Nearest other open item to `item_id`'s own embedding, if within
+    `threshold` cosine distance — the duplicate-capture check triage.py
+    runs right after embedding a freshly saved item. Comparing entirely in
+    SQL (a self-join on items.id, never pulling the raw vector into
+    Python) sidesteps needing a pgvector type adapter registered on this
+    connection. Returns None if item_id has no embedding yet (best-effort
+    embedding failed or is still pending), no open item is close enough,
+    or the query itself fails — degrade, never block the capture over
+    this.
+    """
+    try:
+        async with pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                SELECT other.id, other.title,
+                       other.embedding <=> this.embedding AS distance
+                FROM items AS this, items AS other
+                WHERE this.id = %s
+                  AND this.embedding IS NOT NULL
+                  AND other.id != this.id
+                  AND other.status = 'open'
+                  AND other.embedding IS NOT NULL
+                ORDER BY distance
+                LIMIT 1
+                """,
+                (item_id,),
+            )
+            row = await cur.fetchone()
+    except Exception as exc:  # noqa: BLE001 - degrade, never block the capture
+        logger.warning("duplicate check failed for item_id=%s: %s", item_id, exc)
+        return None
+
+    if row is None:
+        return None
+    other_id, title, distance = row
+    if distance > threshold:
+        return None
+    return other_id, title, distance

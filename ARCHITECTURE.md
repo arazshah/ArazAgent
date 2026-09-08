@@ -578,3 +578,49 @@ Visibility is two places, both additive — no new page:
 Nothing about triage, scoring, capacity accounting, or the decision
 guards changes for a commitment — it's a label on top of the existing
 pipeline, not a fork of it.
+
+## Duplicate detection via embeddings
+
+Capture is deliberately frictionless — no confirmation, no "does this
+already exist?" prompt — which means the same idea sent twice (once as a
+quick text, once again a day later half-remembered) becomes two separate
+`items` rows with nothing connecting them. Phase 4's embeddings already
+give every item a position in semantic space; duplicate detection is
+just asking "is anything already there?" right after a new item lands in
+it.
+
+`app.embeddings.find_similar_open_item(pool, item_id, threshold=0.15)`
+runs the whole comparison in one SQL statement — a self-join on
+`items.id` comparing `other.embedding <=> this.embedding` — rather than
+ever pulling a raw vector into Python (there's no pgvector type adapter
+registered on this connection, only literal strings built for
+INSERT/UPDATE, so round-tripping a vector through Python is avoided
+entirely). It only considers other **open** items, so completing or
+declining one naturally retires it from future duplicate checks.
+
+```
+ app.triage.triage_inbox_row()
+        │  ... insert item, then:
+        ▼
+ embed_item(pool, settings, item_id, text)        # Phase 4, unchanged
+        ▼
+ _check_for_duplicate(pool, settings, item_id)
+        │  dedup.enabled (default true) — same on/off pattern as
+        │  reminder.enabled / review.auto_enabled
+        ▼
+ find_similar_open_item(pool, item_id)
+        │  nearest other open item within cosine distance 0.15, or None
+        ▼
+ if found: UPDATE items SET meta = meta || '{"possible_duplicate_of": <id>}'
+           (never blocks or rejects the capture — only flags it)
+        ▼
+ announcement gets a line: "⚠️ شبیه به #<id> است: <title> — شاید تکراری باشد"
+```
+
+Like the capacity guard and the trade-off requirement, this never removes
+the user's agency: the new item is saved in full either way (never lose a
+capture), the flag is just visible immediately (the announcement) and
+later (`items.meta.possible_duplicate_of`, readable from the admin item
+browser). Skipped entirely — not an error — when `dedup.enabled` is
+false, the new item has no embedding yet (embedding disabled/unconfigured/
+failed), or nothing open is close enough.

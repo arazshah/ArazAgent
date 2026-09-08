@@ -56,7 +56,13 @@ item with who it's owed to (`items.commitment_to`) whenever the text
 describes a specific promise to a specific person — visible via the new
 `/commitments` bot command, a `🤝` badge in the admin item browser, and a
 "فقط تعهدها" filter there (see "Commitments to other people" in
-`ARCHITECTURE.md`). No goals defined yet? That's fine — it
+`ARCHITECTURE.md`). **And near-duplicate captures get flagged**: right
+after embedding, a new item is compared (in one SQL query, via pgvector)
+against every other open item, and if one is close enough, the immediate
+announcement and `items.meta.possible_duplicate_of` both say so —
+configurable via `dedup.enabled` in the admin UI ("موارد تکراری"). It
+never blocks the capture, only flags it (see "Duplicate detection via
+embeddings" in `ARCHITECTURE.md`). No goals defined yet? That's fine — it
 falls back to general judgment until you fill them in. See
 `ARCHITECTURE.md`'s "Constitution-driven scoring"
 section for exactly how. **And the decision reaches you immediately** —

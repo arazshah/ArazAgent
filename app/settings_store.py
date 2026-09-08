@@ -137,6 +137,7 @@ _DEFS: list[SettingDef] = [
         "40",
         _env_var_for("constitution.weekly_capacity_hours"),
     ),
+    SettingDef("dedup.enabled", "dedup", False, "true", _env_var_for("dedup.enabled")),
 ]
 
 DEFS_BY_KEY: dict[str, SettingDef] = {d.key: d for d in _DEFS}

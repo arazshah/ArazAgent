@@ -148,4 +148,12 @@ GROUPS: dict[str, list[FieldSpec]] = {
             validate_positive_int,
         ),
     ],
+    "dedup": [
+        FieldSpec(
+            "dedup.enabled",
+            "هشدار موارد تکراری فعال باشد (true/false)",
+            False,
+            validate_bool,
+        ),
+    ],
 }

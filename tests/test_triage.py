@@ -231,6 +231,107 @@ async def _commitment_to(pool, inbox_id: int):
     return value
 
 
+async def test_duplicate_flagged_by_embeddings_is_recorded_in_meta(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    async def fake_find_similar(pool_, item_id, threshold=0.15):
+        return (42, "an older similar item", 0.05)
+
+    monkeypatch.setattr(triage, "find_similar_open_item", fake_find_similar)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    _score, _decision, meta = await _score_and_decision(pool, inbox_id)
+    assert meta["possible_duplicate_of"] == 42
+
+
+async def test_duplicate_check_disabled_via_setting(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    await settings.set("dedup.enabled", "false")
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    called = []
+
+    async def fake_find_similar(pool_, item_id, threshold=0.15):
+        called.append(item_id)
+        return (42, "should not be reached", 0.05)
+
+    monkeypatch.setattr(triage, "find_similar_open_item", fake_find_similar)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    assert called == []
+    _score, _decision, meta = await _score_and_decision(pool, inbox_id)
+    assert meta == {}
+
+
+async def test_announcement_flags_a_possible_duplicate(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    async def fake_find_similar(pool_, item_id, threshold=0.15):
+        return (42, "an older similar item", 0.05)
+
+    monkeypatch.setattr(triage, "find_similar_open_item", fake_find_similar)
+
+    announcements = []
+
+    async def notify(message: str) -> None:
+        announcements.append(message)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk", notify=notify)
+
+    assert "شبیه به #42 است: an older similar item" in announcements[0]
+
+
+async def test_no_duplicate_found_leaves_meta_and_announcement_unaffected(
+    pool, crypto, monkeypatch
+):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    async def fake_find_similar(pool_, item_id, threshold=0.15):
+        return None
+
+    monkeypatch.setattr(triage, "find_similar_open_item", fake_find_similar)
+
+    announcements = []
+
+    async def notify(message: str) -> None:
+        announcements.append(message)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk", notify=notify)
+
+    assert "شبیه" not in announcements[0]
+    _score, _decision, meta = await _score_and_decision(pool, inbox_id)
+    assert meta == {}
+
+
 async def test_classify_capture_receives_constitution_context(pool, crypto, monkeypatch):
     settings = SettingsStore(pool, crypto)
     await _configure_llm(settings)

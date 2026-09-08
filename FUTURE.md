@@ -34,9 +34,12 @@ options offered after each phase:
   to X in a while" nudges).
 - A content pipeline that turns finished technical work (e.g. commits,
   closed items) into draft posts automatically.
-- Duplicate/overlap detection before creating a new item, using the
-  Phase-4 embeddings already computed — right now near-duplicate captures
-  just become two separate items.
+- Anything beyond flagging a near-duplicate (built — see
+  ARCHITECTURE.md's "Duplicate detection via embeddings" section): no
+  merge action, no "these look the same, keep which one?" prompt from the
+  bot or admin UI — the flag is informational (an announcement line plus
+  `items.meta.possible_duplicate_of`) and the user still resolves it
+  manually (e.g. closing one of the two).
 - Repeated/escalating reminders for an overdue task — the reminder feature
   fires exactly once, ever, per task.
 - A weekly (as opposed to daily) review cadence, or a configurable day of

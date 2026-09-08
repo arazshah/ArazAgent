@@ -19,7 +19,7 @@ from datetime import date
 from psycopg_pool import AsyncConnectionPool
 
 from app.constitution import build_constitution_context
-from app.embeddings import embed_item
+from app.embeddings import embed_item, find_similar_open_item
 from app.labels import DECISION_LABELS, TYPE_LABELS
 from app.llm import VALID_DECISIONS, VALID_ITEM_TYPES, classify_capture
 from app.settings_store import SettingsStore
@@ -114,6 +114,32 @@ def _require_trade_off_for_do_now(
     return DEFAULT_DECISION, combined_reason, True
 
 
+async def _check_for_duplicate(
+    pool: AsyncConnectionPool, settings: SettingsStore, item_id: int
+) -> tuple[int, str] | None:
+    """Frictionless capture means the same idea gets sent twice sometimes —
+    this never blocks saving the new item (never lose a capture), it only
+    flags it: items.meta.possible_duplicate_of records which existing open
+    item it resembles, so it's visible later even if the announcement that
+    carries it isn't seen. Best-effort like embedding itself: disabled,
+    unconfigured, or no embedding yet on this item all mean "skip", not
+    "fail".
+    """
+    enabled = (await settings.get("dedup.enabled")) or "true"
+    if enabled.strip().lower() == "false":
+        return None
+    duplicate = await find_similar_open_item(pool, item_id)
+    if duplicate is None:
+        return None
+    other_id, title, _distance = duplicate
+    async with pool.connection() as conn:
+        await conn.execute(
+            "UPDATE items SET meta = meta || %s::jsonb WHERE id = %s",
+            (json.dumps({"possible_duplicate_of": other_id}), item_id),
+        )
+    return other_id, title
+
+
 def _format_decision_announcement(
     item_id: int,
     item_type: str,
@@ -123,6 +149,7 @@ def _format_decision_announcement(
     decision_reason: str | None,
     what_to_drop: str | None,
     commitment_to: str | None,
+    duplicate_of: tuple[int, str] | None,
 ) -> str:
     type_label = TYPE_LABELS.get(item_type, item_type)
     decision_label = DECISION_LABELS.get(decision, decision)
@@ -135,6 +162,9 @@ def _format_decision_announcement(
         lines.append(f"به‌جاش کنار بذار: {what_to_drop}")
     if commitment_to:
         lines.append(f"🤝 تعهد به: {commitment_to}")
+    if duplicate_of is not None:
+        dup_id, dup_title = duplicate_of
+        lines.append(f"⚠️ شبیه به #{dup_id} است: {dup_title} — شاید تکراری باشد")
     return "\n".join(lines)
 
 
@@ -224,9 +254,19 @@ async def triage_inbox_row(
     # Phase 4: best-effort — a failure here never undoes the item above.
     await embed_item(pool, settings, item_id, text)
 
+    duplicate_of = await _check_for_duplicate(pool, settings, item_id)
+
     if notify is not None:
         announcement = _format_decision_announcement(
-            item_id, item_type, title, decision, score, decision_reason, what_to_drop, commitment_to
+            item_id,
+            item_type,
+            title,
+            decision,
+            score,
+            decision_reason,
+            what_to_drop,
+            commitment_to,
+            duplicate_of,
         )
         try:
             await notify(announcement)
