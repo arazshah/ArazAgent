@@ -360,12 +360,10 @@ actual decision. `app/constitution.py` and the rewritten
                   new work is never free
 ```
 
-Decision and score are informational only — this pass deliberately does
-**not** change `items.status` based on decision, and does not (yet) push
-the decision back to the user as a bot reply after capture (both are
-natural next steps, not built now; see FUTURE.md). What's visible today:
-`/items` shows the decision and score inline, and the admin item browser
-shows both as a badge and a hint alongside every row.
+Decision and score do not (yet) change `items.status` — that's still a
+natural next step, not built now; see FUTURE.md. What is built: the
+decision is announced immediately, and it's also visible any time
+afterward via `/items` and the admin item browser.
 
 With no goals configured (`constitution.goals` empty — the expected state
 until they're figured out), the prompt tells the model to score on general
@@ -374,3 +372,48 @@ judgment (impact/value/irreversibility) instead of goal alignment, and
 scoring is just less targeted until goals exist. `app.constitution`'s
 parsing and capacity math are pure/DB-only and fully unit-tested
 independent of the LLM.
+
+## Immediate decision announcement
+
+The gatekeeper's decision reaches the user right after capture, not only
+on request. `app/triage.triage_inbox_row` takes an optional `notify:
+Callable[[str], Awaitable[None]] | None` — a one-argument "send this
+message back" callback — and calls it once, right after the item is saved
+(and after the best-effort embedding attempt), with a message built by
+`_format_decision_announcement`: type + decision + title, the score, the
+reason, and (when present) what to drop instead.
+
+```
+ text/document capture (app/capture.py)      voice capture, after
+   _schedule_triage() closes over            transcription
+   (provider, chat_id) from the                (app/transcribe/orchestrator.py)
+   incoming message and builds notify            builds the same kind of
+        │                                        notify closure over
+        │                                        (provider, msg.chat_id)
+        ▼                                             │
+ app.state.triage (app/main.py._triage)  ◀─────────────┘
+   a thin pass-through: (inbox_id, text, notify) -> triage_inbox_row(...)
+        │
+        ▼
+ app.triage.triage_inbox_row(..., notify=notify)
+   on success: build the announcement, await notify(announcement),
+   catching and logging any failure — a message that fails to send
+   never undoes the item already written to Postgres
+```
+
+`notify` is `None` wherever there's no live chat to reply into —
+`app.recovery`'s sweep and `scripts/stats.py --recover` both call the
+same `triage` callable with only `(inbox_id, text)`, relying on the
+default, so recovered items are triaged and stored exactly as before but
+silently (no one is watching a chat for them).
+
+`TriageJob` (`app/capture.py`) grew a third parameter for this
+(`Callable[[int, str | None, NotifyFn | None], Awaitable[None]]`); every
+place that implements or fakes that callable — `app/main.py`,
+`app/transcribe/orchestrator.py`, and their tests — was updated to accept
+it, whether or not it's used.
+
+Type and decision labels (the emoji + Persian text like "🟢 همین حالا")
+used to live as separate near-identical dicts in `app/commands.py` and
+`app/admin/routes.py`. Since the announcement needed the same labels a
+third time, they're now one shared `app/labels.py`.

@@ -140,7 +140,7 @@ async def test_text_capture_schedules_triage(pool, crypto):
 
     calls = []
 
-    async def fake_triage(inbox_id: int, text: str | None) -> None:
+    async def fake_triage(inbox_id: int, text: str | None, notify=None) -> None:
         calls.append((inbox_id, text))
 
     ctx.triage = fake_triage
@@ -155,6 +155,35 @@ async def test_text_capture_schedules_triage(pool, crypto):
     for job in ctx.scheduled:  # type: ignore[attr-defined]
         await job()
     assert calls == [(inbox_id, "buy milk")]
+
+
+async def test_scheduled_triage_notify_callback_sends_via_provider(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await _set_allowed(ctx, "999")
+
+    received_notify = []
+
+    async def fake_triage(inbox_id: int, text: str | None, notify=None) -> None:
+        received_notify.append(notify)
+
+    ctx.triage = fake_triage
+
+    await handle_update(make_text_update(7, user_id=999, text="buy milk"), ctx)
+
+    for job in ctx.scheduled:  # type: ignore[attr-defined]
+        await job()
+
+    assert len(received_notify) == 1
+    notify = received_notify[0]
+    assert notify is not None
+
+    sent_before = len(provider.sent)
+    await notify("🟢 تصمیم: همین حالا انجام بده")
+
+    assert len(provider.sent) == sent_before + 1
+    chat_id, text = provider.sent[-1]
+    assert chat_id == 12345  # same chat the original message came from
+    assert text == "🟢 تصمیم: همین حالا انجام بده"
 
 
 async def test_slash_command_does_not_create_inbox_row(pool, crypto):

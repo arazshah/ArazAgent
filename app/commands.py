@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from app import tz
 from app.embeddings import search_items
 from app.jalali import format_deadline
+from app.labels import DECISION_LABELS, TYPE_LABELS
 from app.providers.base import IncomingMessage
 from app.review import build_review_text
 
@@ -38,16 +39,6 @@ NO_SEARCH_RESULTS_TEXT = "چیزی پیدا نشد."
 
 ITEMS_LIMIT = 10
 TASKS_LIMIT = 20
-
-_TYPE_LABEL = {"task": "📌 کار", "note": "📝 یادداشت", "idea": "💡 ایده", "event": "📅 رویداد"}
-
-_DECISION_LABEL = {
-    "do_now": "🟢 همین حالا",
-    "schedule": "🟡 زمان‌بندی",
-    "delegate": "🔵 بسپار",
-    "archive": "⚪ بایگانی",
-    "decline": "🔴 رد شد",
-}
 
 
 async def dispatch(msg: IncomingMessage, ctx: CaptureContext) -> None:
@@ -120,8 +111,8 @@ async def _items(msg: IncomingMessage, ctx: CaptureContext) -> None:
 
     lines = [f"آخرین {len(rows)} آیتم:"]
     for item_type, title, deadline, decision, score in rows:
-        label = _TYPE_LABEL.get(item_type, f"• {item_type}")
-        decision_label = _DECISION_LABEL.get(decision, "")
+        label = TYPE_LABELS.get(item_type, f"• {item_type}")
+        decision_label = DECISION_LABELS.get(decision, "")
         line = f"{label} {decision_label} — {title}"
         if score is not None:
             line += f" (امتیاز {score})"
@@ -202,7 +193,7 @@ async def _search(msg: IncomingMessage, ctx: CaptureContext) -> None:
 
     lines = ["نتایج جست‌وجو:"]
     for item_id, title, item_type, deadline in results:
-        label = _TYPE_LABEL.get(item_type, f"• {item_type}")
+        label = TYPE_LABELS.get(item_type, f"• {item_type}")
         line = f"#{item_id} {label} — {title}"
         if deadline is not None:
             line += f" (تا {format_deadline(deadline)})"

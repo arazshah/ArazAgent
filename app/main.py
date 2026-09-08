@@ -191,8 +191,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.transcribe_voice = _transcribe_voice
 
-    async def _triage(inbox_id: int, text: str | None) -> None:
-        await triage_inbox_row(pool, settings, inbox_id, text)
+    async def _triage(inbox_id: int, text: str | None, notify=None) -> None:
+        await triage_inbox_row(pool, settings, inbox_id, text, notify=notify)
 
     app.state.triage = _triage
 

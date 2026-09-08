@@ -125,4 +125,11 @@ async def transcribe_voice_job(
     # Phase 2: classify the transcript into an `items` row. This sets
     # inbox.processed_at on success — transcription completing is not the
     # same as the row being triaged.
-    await triage_inbox_row(pool, settings, inbox_id, text)
+    notify = None
+    if msg.chat_id is not None:
+        chat_id = msg.chat_id
+
+        async def notify(message: str) -> None:  # noqa: F811 - conditional definition
+            await provider.send_message(chat_id, message)
+
+    await triage_inbox_row(pool, settings, inbox_id, text, notify=notify)

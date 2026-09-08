@@ -21,6 +21,7 @@ from app.admin.forms import GROUPS
 from app.bootstrap import Bootstrap
 from app.db import check_ready
 from app.jalali import format_deadline
+from app.labels import DECISION_LABELS, TYPE_LABELS
 from app.llm import test_chat_connection
 from app.security import (
     LOGIN_CONSTANT_DELAY_SECONDS,
@@ -58,21 +59,6 @@ _GROUP_ICONS = {
     "review": "🗓️",
     "reminder": "⏰",
     "constitution": "📜",
-}
-
-_ITEM_TYPE_LABELS = {
-    "task": "📌 کار",
-    "note": "📝 یادداشت",
-    "idea": "💡 ایده",
-    "event": "📅 رویداد",
-}
-
-_ITEM_DECISION_LABELS = {
-    "do_now": "🟢 همین حالا",
-    "schedule": "🟡 زمان‌بندی",
-    "delegate": "🔵 بسپار",
-    "archive": "⚪ بایگانی",
-    "decline": "🔴 رد شد",
 }
 
 
@@ -535,8 +521,8 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
                 "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
                 "flash": request.query_params.get("flash"),
                 "items": rows,
-                "type_labels": _ITEM_TYPE_LABELS,
-                "decision_labels": _ITEM_DECISION_LABELS,
+                "type_labels": TYPE_LABELS,
+                "decision_labels": DECISION_LABELS,
                 "filter_type": item_type,
                 "filter_status": status,
                 "page": page,

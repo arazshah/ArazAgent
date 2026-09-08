@@ -13,14 +13,18 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import date
 
 from psycopg_pool import AsyncConnectionPool
 
 from app.constitution import build_constitution_context
 from app.embeddings import embed_item
+from app.labels import DECISION_LABELS, TYPE_LABELS
 from app.llm import VALID_DECISIONS, VALID_ITEM_TYPES, classify_capture
 from app.settings_store import SettingsStore
+
+NotifyFn = Callable[[str], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +80,33 @@ def _clean_decision(value: object) -> str:
     return value if value in VALID_DECISIONS else DEFAULT_DECISION
 
 
+def _format_decision_announcement(
+    item_id: int,
+    item_type: str,
+    title: str,
+    decision: str,
+    score: int | None,
+    decision_reason: str | None,
+    what_to_drop: str | None,
+) -> str:
+    type_label = TYPE_LABELS.get(item_type, item_type)
+    decision_label = DECISION_LABELS.get(decision, decision)
+    lines = [f"{type_label} {decision_label} — {title} (#{item_id})"]
+    if score is not None:
+        lines.append(f"امتیاز: {score}/25")
+    if decision_reason:
+        lines.append(f"دلیل: {decision_reason}")
+    if what_to_drop:
+        lines.append(f"به‌جاش کنار بذار: {what_to_drop}")
+    return "\n".join(lines)
+
+
 async def triage_inbox_row(
-    pool: AsyncConnectionPool, settings: SettingsStore, inbox_id: int, text: str | None
+    pool: AsyncConnectionPool,
+    settings: SettingsStore,
+    inbox_id: int,
+    text: str | None,
+    notify: NotifyFn | None = None,
 ) -> None:
     enabled = (await settings.get("llm.triage_enabled")) or "true"
     if enabled.strip().lower() == "false":
@@ -111,6 +140,9 @@ async def triage_inbox_row(
     title = (_clean_text(result.get("title")) or text.strip())[:MAX_TITLE_LENGTH]
     what_to_drop = _clean_text(result.get("what_to_drop_instead"))
     meta = {"what_to_drop_instead": what_to_drop} if what_to_drop else {}
+    score = _clean_score(result.get("score"))
+    decision = _clean_decision(result.get("decision"))
+    decision_reason = _clean_text(result.get("decision_reason"))
 
     async with pool.connection() as conn:
         cur = await conn.execute(
@@ -129,9 +161,9 @@ async def triage_inbox_row(
                 _clean_text(result.get("goal_key")),
                 _clean_effort_minutes(result.get("effort_minutes")),
                 _clean_deadline(result.get("deadline")),
-                _clean_score(result.get("score")),
-                _clean_decision(result.get("decision")),
-                _clean_text(result.get("decision_reason")),
+                score,
+                decision,
+                decision_reason,
                 json.dumps(meta),
             ),
         )
@@ -142,3 +174,12 @@ async def triage_inbox_row(
 
     # Phase 4: best-effort — a failure here never undoes the item above.
     await embed_item(pool, settings, item_id, text)
+
+    if notify is not None:
+        announcement = _format_decision_announcement(
+            item_id, item_type, title, decision, score, decision_reason, what_to_drop
+        )
+        try:
+            await notify(announcement)
+        except Exception:  # noqa: BLE001 - the item is already saved; never lose it over this
+            logger.exception("failed to send decision announcement for item_id=%s", item_id)

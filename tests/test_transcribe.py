@@ -105,7 +105,7 @@ async def test_successful_transcription_triggers_triage(pool, crypto, tmp_path, 
 
     triaged = []
 
-    async def fake_triage(pool_, settings_, inbox_id_, text):
+    async def fake_triage(pool_, settings_, inbox_id_, text, notify=None):
         triaged.append((inbox_id_, text))
 
     monkeypatch.setattr(orchestrator, "triage_inbox_row", fake_triage)
@@ -118,6 +118,43 @@ async def test_successful_transcription_triggers_triage(pool, crypto, tmp_path, 
         cur = await conn.execute("SELECT processed_at FROM inbox WHERE id = %s", (inbox_id,))
         (processed_at,) = await cur.fetchone()
     assert processed_at is None  # triage (mocked here) is what would set it
+
+
+async def test_voice_triage_notify_callback_sends_via_provider(pool, crypto, tmp_path, monkeypatch):
+    provider = FakeProvider()
+    app, settings = _fake_app(pool, crypto, tmp_path, provider)
+    await settings.set("transcription.backend", "avalai")
+
+    update = make_voice_update(10, 999)
+    msg = provider.parse_update(update)
+    inbox_id = await _insert_pending_row(pool, msg)
+
+    class _StubBackend:
+        async def transcribe(self, audio_bytes: bytes, language: str) -> str:
+            return "call the dentist tomorrow"
+
+    async def fake_build_backend(app):
+        return _StubBackend(), "avalai"
+
+    monkeypatch.setattr(orchestrator, "build_backend", fake_build_backend)
+
+    received_notify = []
+
+    async def fake_triage(pool_, settings_, inbox_id_, text, notify=None):
+        received_notify.append(notify)
+
+    monkeypatch.setattr(orchestrator, "triage_inbox_row", fake_triage)
+
+    await orchestrator.transcribe_voice_job(app, inbox_id, msg, reply_message_id=None)
+
+    assert len(received_notify) == 1
+    notify = received_notify[0]
+    assert notify is not None
+
+    sent_before = len(provider.sent)
+    await notify("🟢 تصمیم: همین حالا انجام بده")
+    assert len(provider.sent) == sent_before + 1
+    assert provider.sent[-1] == (12345, "🟢 تصمیم: همین حالا انجام بده")
 
 
 async def test_transcription_failure_marks_failed_and_keeps_audio(

@@ -5,15 +5,13 @@ added basic task open/close; Phase 4 added semantic search; Phase 5 added
 an on-demand and optional daily review; Phase 6 added an item browser to
 the admin UI; Phase 7 hardened retries for AvalAI calls; Phase 8 added the
 Shamsi calendar; a post-Phase-8 feature added once-per-task deadline
-reminders; another added constitution-driven scoring/decisions (see
-`ARCHITECTURE.md`). Anything below was identified as plausibly useful but
-explicitly out of scope for now — recorded here instead of built, so each
-phase stays small and reliable. This list is also the standing menu of
-"what's next" options offered after each phase:
+reminders; another added constitution-driven scoring/decisions; another
+added the immediate decision announcement (see `ARCHITECTURE.md`).
+Anything below was identified as plausibly useful but explicitly out of
+scope for now — recorded here instead of built, so each phase stays small
+and reliable. This list is also the standing menu of "what's next"
+options offered after each phase:
 
-- Pushing the triage decision back to the user as a bot reply right after
-  capture (currently it's stored and visible via `/items`/admin, but the
-  immediate "✅ captured" ack doesn't yet say what the gatekeeper decided).
 - Auto-changing `items.status` based on `decision` (e.g. "archive"/
   "decline" auto-closing the item) — decision is informational only today;
   the user still has to act on it.

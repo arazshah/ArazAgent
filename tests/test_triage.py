@@ -314,3 +314,90 @@ async def test_what_to_drop_instead_stored_in_meta(pool, crypto, monkeypatch):
 
     _score, _decision, meta = await _score_and_decision(pool, inbox_id)
     assert meta == {"what_to_drop_instead": "کار #12 رو کنار بذار"}
+
+
+async def test_notify_called_with_decision_announcement_on_success(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {
+            "type": "task",
+            "title": "تماس با دندان‌پزشک",
+            "decision": "do_now",
+            "score": 20,
+            "decision_reason": "فوری است",
+            "what_to_drop_instead": "کار #3",
+        }
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    announcements = []
+
+    async def notify(message: str) -> None:
+        announcements.append(message)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk", notify=notify)
+
+    assert len(announcements) == 1
+    text = announcements[0]
+    assert "تماس با دندان‌پزشک" in text
+    assert "20/25" in text
+    assert "فوری است" in text
+    assert "کار #3" in text
+
+
+async def test_notify_not_called_without_a_notify_callback(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    # Should simply not attempt to notify anyone — no crash either way.
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    assert await _items_for(pool, inbox_id) != []
+
+
+async def test_notify_not_called_on_classification_failure(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"error": "boom"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    calls = []
+
+    async def notify(message: str) -> None:
+        calls.append(message)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk", notify=notify)
+
+    assert calls == []
+
+
+async def test_notify_failure_does_not_undo_the_saved_item(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "note", "title": "buy milk"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    async def failing_notify(message: str) -> None:
+        raise RuntimeError("bot API unreachable")
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk", notify=failing_notify)
+
+    assert await _items_for(pool, inbox_id) != []
+    assert await _processed_at(pool, inbox_id) is not None
