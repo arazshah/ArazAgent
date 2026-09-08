@@ -1,19 +1,57 @@
 {% extends "base.html" %}
 {% block title %}تنظیمات{% endblock %}
 {% block content %}
-<div class="topbar">
+<div class="page-head">
   <h1>تنظیمات لایه ثبت</h1>
-  <div>
-    <a href="{{ admin_path }}/items">آیتم‌ها</a>
-    <form method="post" action="{{ admin_path }}/logout" class="inline-form"><button type="submit" class="link">خروج</button></form>
-  </div>
+  <p class="page-subtitle">پیکربندی بله، هوش مصنوعی، رونویسی و مرور دوره‌ای — تغییرات فوراً اعمال می‌شوند، بدون نیاز به ری‌استارت.</p>
 </div>
 
 {% if flash %}<p class="flash">{{ flash }}</p>{% endif %}
 
+<section class="card">
+  <div class="card-header"><h2>📊 وضعیت</h2></div>
+  <div class="stat-grid">
+    <div class="stat-tile">
+      <div class="stat-value">{{ status.total }}</div>
+      <div class="stat-label">مجموع ثبت‌شده</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-value">{{ status.today }}</div>
+      <div class="stat-label">امروز</div>
+    </div>
+    <div class="stat-tile {{ 'ok' if status.db_ok else 'bad' }}">
+      <div class="stat-value">{{ 'متصل' if status.db_ok else 'قطع' }}</div>
+      <div class="stat-label">پایگاه‌داده</div>
+    </div>
+    <div class="stat-tile">
+      <div class="stat-value">{{ status.mode }}</div>
+      <div class="stat-label">حالت دریافت</div>
+    </div>
+    <div class="stat-tile {{ 'warn' if status.pending_triage else '' }}">
+      <div class="stat-value">{{ status.pending_triage }}</div>
+      <div class="stat-label">در انتظار دسته‌بندی</div>
+    </div>
+    <div class="stat-tile {{ 'warn' if status.missing_embeddings else '' }}">
+      <div class="stat-value">{{ status.missing_embeddings }}</div>
+      <div class="stat-label">بدون embedding</div>
+    </div>
+  </div>
+  {% if status.by_transcript_status %}
+  <p class="hint">
+    رونویسی:
+    {% for k, v in status.by_transcript_status.items() %}{{ k }}: {{ v }}{% if not loop.last %}&nbsp;·&nbsp;{% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  <p class="hint">نسخه: <code>{{ status.git_sha }}</code></p>
+  <form method="post" action="{{ admin_path }}/recover" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="secondary">🔄 بازیابی موارد گیرکرده</button>
+  </form>
+</section>
+
 {% for group_name, group in groups.items() %}
 <section class="card">
-  <h2>{{ group.label }}</h2>
+  <div class="card-header"><h2>{{ group_icons.get(group_name, '⚙️') }} {{ group.label }}</h2></div>
   {% if group.error %}<p class="error">{{ group.error }}</p>{% endif %}
   <form method="post" action="{{ admin_path }}/settings/{{ group_name }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -48,7 +86,7 @@
 {% endfor %}
 
 <section class="card">
-  <h2>مدیر</h2>
+  <div class="card-header"><h2>🔐 مدیر</h2></div>
   <p>رمز عبور: <span class="badge badge-{{ admin_info.source }}">{{ admin_info.source }}</span></p>
   <p class="hint">تغییر رمز عبور فقط از طریق scripts/set_admin_password.py امکان‌پذیر است.</p>
   <form method="post" action="{{ admin_path }}/settings/invalidate-sessions" class="inline-form">
@@ -58,7 +96,7 @@
 </section>
 
 <section class="card">
-  <h2>وبهوک</h2>
+  <div class="card-header"><h2>🔗 وبهوک</h2></div>
   <p>آدرس فعلی: <code>{{ webhook.url or 'ثبت نشده' }}</code></p>
   <p class="hint">تغییر به حالت polling نیازمند حذف وبهوک است.</p>
   <form method="post" action="{{ admin_path }}/webhook/register" class="inline-form">
@@ -68,26 +106,6 @@
   <form method="post" action="{{ admin_path }}/webhook/delete" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="danger">حذف وبهوک</button>
-  </form>
-</section>
-
-<section class="card">
-  <h2>وضعیت</h2>
-  <p>مجموع ثبت‌شده: {{ status.total }}</p>
-  <p>امروز: {{ status.today }}</p>
-  <p>وضعیت پایگاه‌داده: {{ 'متصل' if status.db_ok else 'قطع' }}</p>
-  <p>نسخه: {{ status.git_sha }}</p>
-  <p>حالت فعلی: {{ status.mode }}</p>
-  <p>در انتظار دسته‌بندی: {{ status.pending_triage }}</p>
-  <p>بدون embedding: {{ status.missing_embeddings }}</p>
-  <ul>
-    {% for k, v in status.by_transcript_status.items() %}
-    <li>{{ k }}: {{ v }}</li>
-    {% endfor %}
-  </ul>
-  <form method="post" action="{{ admin_path }}/recover" class="inline-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit">بازیابی رونویسی‌های معلق</button>
   </form>
 </section>
 {% endblock %}

@@ -3,11 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}پنل{% endblock %}</title>
+  <title>{% block title %}پنل{% endblock %} · آراز‌ایجنت</title>
   <link rel="stylesheet" href="{{ admin_path }}/static/admin.css">
 </head>
 <body>
-  <main class="wrap">
+  <main class="wrap {% block wrap_class %}{% endblock %}">
+    {% block nav %}
+    <nav class="nav">
+      <span class="nav-brand">🗂️ آراز‌ایجنت</span>
+      <div class="nav-links">
+        <a class="nav-link {% if active_page == 'settings' %}active{% endif %}" href="{{ admin_path }}/settings">تنظیمات</a>
+        <a class="nav-link {% if active_page == 'items' %}active{% endif %}" href="{{ admin_path }}/items">آیتم‌ها</a>
+        <form method="post" action="{{ admin_path }}/logout" class="inline-form">
+          <button type="submit" class="nav-logout">خروج</button>
+        </form>
+      </div>
+    </nav>
+    {% endblock %}
     {% block content %}{% endblock %}
   </main>
 </body>

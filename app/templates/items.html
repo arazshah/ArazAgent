@@ -1,39 +1,49 @@
 {% extends "base.html" %}
 {% block title %}آیتم‌ها{% endblock %}
 {% block content %}
-<div class="topbar">
+<div class="page-head">
   <h1>آیتم‌ها</h1>
-  <a href="{{ admin_path }}/settings">بازگشت به تنظیمات</a>
+  <p class="page-subtitle">هر چیزی که لایه‌ی دسته‌بندی (فاز ۲) از پیام‌های ثبت‌شده ساخته — قابل فیلتر، ویرایش عنوان و تغییر وضعیت.</p>
 </div>
 
 {% if flash %}<p class="flash">{{ flash }}</p>{% endif %}
 
 <section class="card">
-  <h2>نمای کلی</h2>
-  <p>مجموع: {{ total }}</p>
-  <p>
+  <div class="card-header"><h2>📊 نمای کلی</h2></div>
+  <div class="stat-grid">
+    <div class="stat-tile">
+      <div class="stat-value">{{ total }}</div>
+      <div class="stat-label">مجموع</div>
+    </div>
     {% for t, c in by_type.items() %}
-      <span class="badge badge-default">{{ type_labels.get(t, t) }}: {{ c }}</span>
+    <div class="stat-tile">
+      <div class="stat-value">{{ c }}</div>
+      <div class="stat-label">{{ type_labels.get(t, t) }}</div>
+    </div>
     {% endfor %}
-  </p>
-  <p>
     {% for s, c in by_status.items() %}
-      <span class="badge badge-default">{{ s }}: {{ c }}</span>
+    <div class="stat-tile {{ 'ok' if s == 'done' else '' }}">
+      <div class="stat-value">{{ c }}</div>
+      <div class="stat-label">{{ s }}</div>
+    </div>
     {% endfor %}
-  </p>
+  </div>
   {% if daily %}
   <div class="chart">
     {% for day, count in daily %}
-    <div class="chart-bar" style="height: {{ ((count / max_daily * 100) if max_daily else 0) | round(0, 'ceil') }}%;" title="{{ day }}: {{ count }}"></div>
+    <div class="chart-col">
+      <div class="chart-bar" style="height: {{ ((count / max_daily * 100) if max_daily else 0) | round(0, 'ceil') }}%;" title="{{ day }}: {{ count }}"></div>
+      <span class="chart-label">{{ day[5:] }}</span>
+    </div>
     {% endfor %}
   </div>
-  <p class="hint">ثبت‌شده در ۷ روز اخیر (چپ = قدیم‌تر)</p>
+  <p class="hint">تعداد ثبت‌شده در ۷ روز اخیر</p>
   {% endif %}
 </section>
 
 <section class="card">
-  <h2>فیلتر</h2>
-  <form method="get" action="{{ admin_path }}/items" class="inline-form">
+  <div class="card-header"><h2>🔍 فیلتر</h2></div>
+  <form method="get" action="{{ admin_path }}/items" class="toolbar">
     <select name="type">
       <option value="">همه انواع</option>
       {% for t in ["task", "note", "idea", "event"] %}
@@ -50,17 +60,20 @@
 </section>
 
 <section class="card">
-  <h2>لیست ({{ total }})</h2>
+  <div class="card-header"><h2>🗂️ لیست <span class="badge badge-default">{{ total }}</span></h2></div>
   {% if not items %}
-  <p class="hint">چیزی پیدا نشد.</p>
+  <p class="empty-state">چیزی پیدا نشد.</p>
   {% endif %}
+  <div class="item-list">
   {% for item in items %}
   <div class="item-row">
     <div class="item-meta">
       <span class="badge badge-default">{{ type_labels.get(item[1], item[1]) }}</span>
-      <span class="hint">#{{ item[0] }} · {{ item[3] }}{% if item[4] %} · تا {{ item[4] }}{% endif %}</span>
+      <span class="item-status {{ item[3] }}">{{ item[3] }}</span>
+      {% if item[4] %}<span class="item-deadline">⏰ تا {{ item[4] }}</span>{% endif %}
+      <span class="item-id">#{{ item[0] }}</span>
     </div>
-    <form method="post" action="{{ admin_path }}/items/{{ item[0] }}/edit" class="inline-form">
+    <form method="post" action="{{ admin_path }}/items/{{ item[0] }}/edit" class="item-edit">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="redirect_type" value="{{ filter_type }}">
       <input type="hidden" name="redirect_status" value="{{ filter_status }}">
@@ -68,25 +81,26 @@
       <input type="text" name="title" value="{{ item[2] }}">
       <button type="submit" class="secondary small">ذخیره</button>
     </form>
-    <form method="post" action="{{ admin_path }}/items/{{ item[0] }}/toggle" class="inline-form">
+    <form method="post" action="{{ admin_path }}/items/{{ item[0] }}/toggle" class="item-toggle">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="redirect_type" value="{{ filter_type }}">
       <input type="hidden" name="redirect_status" value="{{ filter_status }}">
       <input type="hidden" name="redirect_page" value="{{ page }}">
       <input type="hidden" name="new_status" value="{{ 'done' if item[3] == 'open' else 'open' }}">
-      <button type="submit" class="small">{{ 'بستن' if item[3] == 'open' else 'بازکردن' }}</button>
+      <button type="submit" class="{{ 'small' if item[3] == 'open' else 'secondary small' }}">{{ '✓ بستن' if item[3] == 'open' else '↺ بازکردن' }}</button>
     </form>
   </div>
   {% endfor %}
+  </div>
 </section>
 
 {% if total_pages > 1 %}
 <section class="card">
-  <p>صفحه {{ page }} از {{ total_pages }}</p>
-  <p>
-    {% if page > 1 %}<a href="{{ admin_path }}/items?type={{ filter_type }}&status={{ filter_status }}&page={{ page - 1 }}">قبلی</a>{% endif %}
-    {% if page < total_pages %}<a href="{{ admin_path }}/items?type={{ filter_type }}&status={{ filter_status }}&page={{ page + 1 }}">بعدی</a>{% endif %}
-  </p>
+  <div class="pagination">
+    {% if page > 1 %}<a href="{{ admin_path }}/items?type={{ filter_type }}&status={{ filter_status }}&page={{ page - 1 }}">‹ قبلی</a>{% endif %}
+    <span class="page-info">صفحه {{ page }} از {{ total_pages }}</span>
+    {% if page < total_pages %}<a href="{{ admin_path }}/items?type={{ filter_type }}&status={{ filter_status }}&page={{ page + 1 }}">بعدی ›</a>{% endif %}
+  </div>
 </section>
 {% endif %}
 {% endblock %}

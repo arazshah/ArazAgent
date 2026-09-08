@@ -47,12 +47,30 @@ _GROUP_LABELS = {
     "review": "مرور دوره‌ای",
 }
 
+_GROUP_ICONS = {
+    "bale": "🤖",
+    "llm": "🧠",
+    "transcription": "🎙️",
+    "system": "⚙️",
+    "review": "🗓️",
+}
+
 _ITEM_TYPE_LABELS = {
     "task": "📌 کار",
     "note": "📝 یادداشت",
     "idea": "💡 ایده",
     "event": "📅 رویداد",
 }
+
+
+async def _ordered_counts(counts_coro, key_order: tuple[str, ...]) -> dict[str, int]:
+    """Reshapes a {key: count} dict (arbitrary GROUP BY order) into a fixed
+    key order with 0 for any missing key, so the overview tiles on
+    items.html render in the same position every time instead of jumping
+    around based on whatever order Postgres happened to return.
+    """
+    counts = await counts_coro
+    return {key: counts.get(key, 0) for key in key_order}
 
 
 def _templates() -> Jinja2Templates:
@@ -223,6 +241,8 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
             "settings.html",
             {
                 "admin_path": boot.admin_path,
+                "active_page": "settings",
+                "group_icons": _GROUP_ICONS,
                 "groups": groups,
                 "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
                 "flash": request.query_params.get("flash"),
@@ -286,6 +306,8 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
                 "settings.html",
                 {
                     "admin_path": boot.admin_path,
+                    "active_page": "settings",
+                    "group_icons": _GROUP_ICONS,
                     "groups": groups,
                     "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
                     "flash": None,
@@ -366,6 +388,8 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
             "settings.html",
             {
                 "admin_path": boot.admin_path,
+                "active_page": "settings",
+                "group_icons": _GROUP_ICONS,
                 "groups": groups,
                 "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
                 "flash": None,
@@ -492,6 +516,7 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
             "items.html",
             {
                 "admin_path": boot.admin_path,
+                "active_page": "items",
                 "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
                 "flash": request.query_params.get("flash"),
                 "items": rows,
@@ -501,9 +526,12 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
                 "page": page,
                 "total_pages": total_pages,
                 "total": total,
-                "current_qs": f"?type={item_type}&status={status}&page={page}",
-                "by_type": await items_view.count_by_type(pool),
-                "by_status": await items_view.count_by_status(pool),
+                "by_type": await _ordered_counts(
+                    items_view.count_by_type(pool), items_view.VALID_TYPES
+                ),
+                "by_status": await _ordered_counts(
+                    items_view.count_by_status(pool), items_view.VALID_STATUSES
+                ),
                 "daily": daily,
                 "max_daily": max_daily,
             },
