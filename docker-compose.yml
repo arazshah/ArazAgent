@@ -1,0 +1,50 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
+    env_file: .env
+    environment:
+      TZ: Asia/Tehran
+    ports:
+      - "8000:8000"
+    volumes:
+      - audio_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # Coolify assigns the public domain/port from its own UI. Coolify's
+    # SERVICE_FQDN_* magic env vars are version-dependent — set the domain
+    # (agent.araz.me) and port (8000) from the Coolify resource UI instead
+    # of relying on the line below.
+    # SERVICE_FQDN_APP_8000=agent.araz.me
+
+  # Switching to Coolify's managed Postgres: drop this service and point
+  # DATABASE_URL (in .env) at the managed instance instead.
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: araz
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: araz_agent
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U araz -d araz_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  # Holds voice note audio. Losing this volume loses every voice note's
+  # source audio permanently — back it up (see README).
+  audio_data:
+  db_data:

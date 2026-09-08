@@ -15,11 +15,13 @@ from app.bootstrap import Bootstrap, load_bootstrap
 from app.capture import CaptureContext, handle_update
 from app.crypto import Crypto
 from app.db import apply_schema, check_ready, create_pool
+from app.logsafe import install as install_log_redaction
 from app.providers.registry import ProviderRegistry
 from app.settings_store import SettingsStore
 from app.transcribe.orchestrator import transcribe_voice_job
 
 logging.basicConfig(level=logging.INFO)
+install_log_redaction()
 logger = logging.getLogger(__name__)
 
 
