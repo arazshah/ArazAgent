@@ -61,6 +61,26 @@ _GROUP_ICONS = {
     "constitution": "📜",
 }
 
+# Extra sidebar tabs that aren't settings-form groups (webhook/admin panels).
+_EXTRA_TAB_LABELS = {"webhook": "وبهوک", "admin": "مدیر"}
+_EXTRA_TAB_ICONS = {"webhook": "🔗", "admin": "🔐"}
+_TAB_LABELS = {**_GROUP_LABELS, **_EXTRA_TAB_LABELS}
+_TAB_ICONS = {**_GROUP_ICONS, **_EXTRA_TAB_ICONS}
+
+# Sidebar grouping: (section label, tab ids). Order here is the render order.
+_NAV_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("هسته", ("bale", "llm", "transcription")),
+    ("رفتار و تصمیم‌گیری", ("constitution", "reminder", "review")),
+    ("سیستم", ("system", "webhook", "admin")),
+)
+
+_ALL_TAB_IDS = frozenset(_TAB_LABELS)
+_DEFAULT_TAB = "bale"
+
+
+def _resolve_tab(raw: str | None) -> str:
+    return raw if raw in _ALL_TAB_IDS else _DEFAULT_TAB
+
 
 async def _ordered_counts(counts_coro, key_order: tuple[str, ...]) -> dict[str, int]:
     """Reshapes a {key: count} dict (arbitrary GROUP BY order) into a fixed
@@ -245,6 +265,10 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
                 "active_page": "settings",
                 "group_icons": _GROUP_ICONS,
                 "groups": groups,
+                "nav_sections": _NAV_SECTIONS,
+                "tab_labels": _TAB_LABELS,
+                "tab_icons": _TAB_ICONS,
+                "active_tab": _resolve_tab(request.query_params.get("tab")),
                 "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
                 "flash": request.query_params.get("flash"),
                 "webhook": {"url": webhook_display},
@@ -310,6 +334,10 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
                     "active_page": "settings",
                     "group_icons": _GROUP_ICONS,
                     "groups": groups,
+                    "nav_sections": _NAV_SECTIONS,
+                    "tab_labels": _TAB_LABELS,
+                    "tab_icons": _TAB_ICONS,
+                    "active_tab": _resolve_tab(group_name),
                     "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
                     "flash": None,
                     "webhook": {"url": None},
@@ -320,7 +348,9 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
                 status_code=400,
             )
 
-        return RedirectResponse(f"{boot.admin_path}/settings?flash=ذخیره+شد", status_code=302)
+        return RedirectResponse(
+            f"{boot.admin_path}/settings?flash=ذخیره+شد&tab={group_name}", status_code=302
+        )
 
     @router.post("/settings/clear/{key}")
     async def settings_clear(request: Request, key: str):
@@ -340,7 +370,10 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
             await settings.clear(key, actor_ip=client_ip(request, boot.trust_proxy_headers))
         except SettingsError:
             return PlainTextResponse("unknown key", status_code=404)
-        return RedirectResponse(f"{boot.admin_path}/settings?flash=پاک+شد", status_code=302)
+        tab = _resolve_tab(key.split(".", 1)[0])
+        return RedirectResponse(
+            f"{boot.admin_path}/settings?flash=پاک+شد&tab={tab}", status_code=302
+        )
 
     @router.post("/settings/invalidate-sessions")
     async def invalidate_sessions(request: Request):
@@ -392,6 +425,10 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
                 "active_page": "settings",
                 "group_icons": _GROUP_ICONS,
                 "groups": groups,
+                "nav_sections": _NAV_SECTIONS,
+                "tab_labels": _TAB_LABELS,
+                "tab_icons": _TAB_ICONS,
+                "active_tab": _resolve_tab(group_name),
                 "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
                 "flash": None,
                 "webhook": {"url": None},
@@ -452,10 +489,13 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
         provider = await request.app.state.registry.get_bale_client()
         if provider is None or not base_url or not secret:
             return RedirectResponse(
-                f"{boot.admin_path}/settings?flash=تنظیمات+بله+کامل+نیست", status_code=302
+                f"{boot.admin_path}/settings?flash=تنظیمات+بله+کامل+نیست&tab=webhook",
+                status_code=302,
             )
         await provider.set_webhook(f"{base_url}/webhook/{secret}", secret)
-        return RedirectResponse(f"{boot.admin_path}/settings?flash=وبهوک+ثبت+شد", status_code=302)
+        return RedirectResponse(
+            f"{boot.admin_path}/settings?flash=وبهوک+ثبت+شد&tab=webhook", status_code=302
+        )
 
     @router.post("/webhook/delete")
     async def webhook_delete(request: Request):
@@ -464,7 +504,9 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
         provider = await request.app.state.registry.get_bale_client()
         if provider is not None:
             await provider.delete_webhook()
-        return RedirectResponse(f"{boot.admin_path}/settings?flash=وبهوک+حذف+شد", status_code=302)
+        return RedirectResponse(
+            f"{boot.admin_path}/settings?flash=وبهوک+حذف+شد&tab=webhook", status_code=302
+        )
 
     @router.post("/recover")
     async def recover(request: Request):

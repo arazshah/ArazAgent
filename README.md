@@ -42,7 +42,11 @@ you fill them in. See `ARCHITECTURE.md`'s "Constitution-driven scoring"
 section for exactly how. **And the decision reaches you immediately** —
 right after "✅ captured," a second message announces the type, decision,
 score, reason, and (when relevant) what to drop instead, whether the
-capture came in as text or voice. `FUTURE.md` has what this still doesn't
+capture came in as text or voice. **The settings page is now a proper
+dashboard**: an always-visible status strip up top, and a sidebar
+(هسته / رفتار و تصمیم‌گیری / سیستم) that switches between one settings
+group at a time in the main panel — instead of every group stacked in one
+long scroll. `FUTURE.md` has what this still doesn't
 do (it doesn't auto-change `items.status`, and there's no calibration log
 of when you override a decision) and the rest of the roadmap: a real goals
 table with a CRUD UI, commitments-to-others tracking, a personal CRM, and

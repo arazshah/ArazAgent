@@ -413,6 +413,34 @@ place that implements or fakes that callable — `app/main.py`,
 `app/transcribe/orchestrator.py`, and their tests — was updated to accept
 it, whether or not it's used.
 
+## Settings page: dashboard layout
+
+`/admin/settings` grew from one long column of stacked cards (every
+settings group rendered at once) into a dashboard: a status strip that's
+always visible at the top, plus a sidebar (grouped into "هسته", "رفتار و
+تصمیم‌گیری", "سیستم") that switches which single group's card is shown in
+the main panel. This is a server-rendered tab, not a JS one — the sidebar
+is a plain `<a href="?tab=constitution">` per group, `settings_page` reads
+`request.query_params["tab"]`, validates it against the known tab ids
+(`_resolve_tab`, defaulting to `"bale"` for anything unrecognized), and the
+template only renders the one matching `groups[active_tab]` (or the
+`admin`/`webhook` pseudo-tabs, which aren't `GROUPS` entries but are
+included in the same sidebar and `tab=` mechanism). No client-side
+JavaScript, no page-state to lose on a slow connection — a bookmarked
+`?tab=constitution` link always lands on the right panel, and every
+POST handler that mutates a group (`settings_submit`, `settings_test`,
+`settings_clear`, `webhook_register`, `webhook_delete`) redirects back
+with the same `tab=` so saving a group keeps you looking at it instead of
+bouncing to the first tab.
+
+`_GROUP_LABELS`/`_GROUP_ICONS` (existing) plus new `_EXTRA_TAB_LABELS`/
+`_EXTRA_TAB_ICONS` (for `admin`/`webhook`) are merged into `_TAB_LABELS`/
+`_TAB_ICONS` for the sidebar; `_NAV_SECTIONS` is the fixed
+`(section_label, (tab_id, ...))` grouping tuple that controls sidebar
+order. `_ALL_TAB_IDS = frozenset(_TAB_LABELS)` is what `_resolve_tab`
+validates against — an unknown or missing `tab` query param never 404s,
+it just falls back to `bale`.
+
 Type and decision labels (the emoji + Persian text like "🟢 همین حالا")
 used to live as separate near-identical dicts in `app/commands.py` and
 `app/admin/routes.py`. Since the announcement needed the same labels a
