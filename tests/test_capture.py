@@ -96,7 +96,7 @@ async def test_voice_update_inserts_pending_row_and_schedules_transcription(pool
 
     calls = []
 
-    async def fake_transcribe(inbox_id: int, msg) -> None:
+    async def fake_transcribe(inbox_id: int, msg, reply_message_id: int | None) -> None:
         calls.append(inbox_id)
 
     ctx.transcribe_voice = fake_transcribe

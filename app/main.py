@@ -17,6 +17,7 @@ from app.crypto import Crypto
 from app.db import apply_schema, check_ready, create_pool
 from app.providers.registry import ProviderRegistry
 from app.settings_store import SettingsStore
+from app.transcribe.orchestrator import transcribe_voice_job
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -94,6 +95,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.crypto = crypto
     app.state.settings = settings
     app.state.registry = registry
+
+    async def _transcribe_voice(inbox_id: int, msg, reply_message_id: int | None) -> None:
+        await transcribe_voice_job(app, inbox_id, msg, reply_message_id)
+
+    app.state.transcribe_voice = _transcribe_voice
 
     poll_task = asyncio.create_task(_polling_loop(app))
 

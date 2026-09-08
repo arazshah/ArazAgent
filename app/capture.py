@@ -19,7 +19,7 @@ from app.settings_store import SettingsStore
 
 logger = logging.getLogger(__name__)
 
-TranscribeJob = Callable[[int, IncomingMessage], Awaitable[None]]
+TranscribeJob = Callable[[int, IncomingMessage, int | None], Awaitable[None]]
 
 
 @dataclass
@@ -142,13 +142,14 @@ async def _handle_voice(msg: IncomingMessage, ctx: CaptureContext) -> int | None
     )
     if inbox_id is None:
         return None
-    await ctx.provider.send_message(msg.chat_id, f"🎙 #{inbox_id} ثبت شد · در حال رونویسی…")
+    reply = await ctx.provider.send_message(msg.chat_id, f"🎙 #{inbox_id} ثبت شد · در حال رونویسی…")
+    reply_message_id = (reply.get("result") or {}).get("message_id")
 
     if ctx.transcribe_voice is not None:
         job = ctx.transcribe_voice
 
         async def run() -> None:
-            await job(inbox_id, msg)
+            await job(inbox_id, msg, reply_message_id)
 
         ctx.schedule_background(run)
     else:
