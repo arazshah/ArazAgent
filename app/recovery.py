@@ -50,7 +50,7 @@ async def recover_stuck_transcriptions(app: FastAPI) -> int:
         if msg is None:
             logger.error("recovery: could not re-parse raw_update for inbox_id=%s", inbox_id)
             continue
-        await transcribe_voice(inbox_id, msg)
+        await transcribe_voice(inbox_id, msg, None)
         recovered += 1
 
     return recovered
