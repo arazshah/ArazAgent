@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import tz
+from app import items_view, tz
 from app.admin.forms import GROUPS
 from app.bootstrap import Bootstrap
 from app.db import check_ready
@@ -45,6 +45,13 @@ _GROUP_LABELS = {
     "transcription": "رونویسی",
     "system": "سیستم",
     "review": "مرور دوره‌ای",
+}
+
+_ITEM_TYPE_LABELS = {
+    "task": "📌 کار",
+    "note": "📝 یادداشت",
+    "idea": "💡 ایده",
+    "event": "📅 رویداد",
 }
 
 
@@ -451,6 +458,113 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
             f"{boot.admin_path}/settings?flash="
             f"بازیابی+{transcribed}+رونویسی+و+{triaged}+دسته‌بندی+و+{embedded}+embedding",
             status_code=302,
+        )
+
+    @router.get("/items", response_class=HTMLResponse)
+    async def items_page(request: Request):
+        unavailable = await _service_unavailable_if_no_password(request)
+        if unavailable is not None:
+            return unavailable
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+
+        pool = request.app.state.pool
+        item_type = request.query_params.get("type") or ""
+        status = request.query_params.get("status") or ""
+        if item_type not in items_view.VALID_TYPES:
+            item_type = ""
+        if status not in items_view.VALID_STATUSES:
+            status = ""
+        try:
+            page = max(int(request.query_params.get("page", "1")), 1)
+        except ValueError:
+            page = 1
+        offset = (page - 1) * items_view.PAGE_SIZE
+
+        rows = await items_view.list_items(pool, item_type or None, status or None, offset=offset)
+        total = await items_view.count_items(pool, item_type or None, status or None)
+        total_pages = max((total + items_view.PAGE_SIZE - 1) // items_view.PAGE_SIZE, 1)
+        daily = await items_view.captured_per_day(pool)
+        max_daily = max((count for _, count in daily), default=0)
+
+        return templates.TemplateResponse(
+            request,
+            "items.html",
+            {
+                "admin_path": boot.admin_path,
+                "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
+                "flash": request.query_params.get("flash"),
+                "items": rows,
+                "type_labels": _ITEM_TYPE_LABELS,
+                "filter_type": item_type,
+                "filter_status": status,
+                "page": page,
+                "total_pages": total_pages,
+                "total": total,
+                "current_qs": f"?type={item_type}&status={status}&page={page}",
+                "by_type": await items_view.count_by_type(pool),
+                "by_status": await items_view.count_by_status(pool),
+                "daily": daily,
+                "max_daily": max_daily,
+            },
+        )
+
+    def _items_redirect_qs(form) -> str:
+        # Rebuilt from individually validated parts rather than trusting a
+        # raw querystring round-tripped through a hidden field — form data
+        # is client-supplied, and this ends up in a redirect Location.
+        item_type = str(form.get("redirect_type", ""))
+        status = str(form.get("redirect_status", ""))
+        if item_type not in items_view.VALID_TYPES:
+            item_type = ""
+        if status not in items_view.VALID_STATUSES:
+            status = ""
+        try:
+            page = max(int(str(form.get("redirect_page", "1"))), 1)
+        except ValueError:
+            page = 1
+        return f"?type={item_type}&status={status}&page={page}"
+
+    @router.post("/items/{item_id}/toggle")
+    async def item_toggle(request: Request, item_id: int):
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+        form = await request.form()
+        if not verify_csrf(
+            boot.session_secret,
+            _get_session_cookie(request) or "",
+            str(form.get("csrf_token", "")),
+        ):
+            return PlainTextResponse("bad csrf token", status_code=400)
+
+        new_status = str(form.get("new_status", ""))
+        if new_status not in items_view.VALID_STATUSES:
+            return PlainTextResponse("invalid status", status_code=400)
+
+        await items_view.set_item_status(request.app.state.pool, item_id, new_status)
+        return RedirectResponse(
+            f"{boot.admin_path}/items{_items_redirect_qs(form)}", status_code=302
+        )
+
+    @router.post("/items/{item_id}/edit")
+    async def item_edit(request: Request, item_id: int):
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+        form = await request.form()
+        if not verify_csrf(
+            boot.session_secret,
+            _get_session_cookie(request) or "",
+            str(form.get("csrf_token", "")),
+        ):
+            return PlainTextResponse("bad csrf token", status_code=400)
+
+        title = str(form.get("title", "")).strip()
+        if not title:
+            return PlainTextResponse("title required", status_code=400)
+
+        await items_view.set_item_title(request.app.state.pool, item_id, title)
+        return RedirectResponse(
+            f"{boot.admin_path}/items{_items_redirect_qs(form)}", status_code=302
         )
 
     return router

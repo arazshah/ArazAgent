@@ -195,3 +195,26 @@ The auto-send assumes a private Bale chat's `chat_id == user_id`, the same
 assumption `app/capture.py` relies on for allowlisting — there is no stored
 chat_id to send to otherwise, since a review isn't triggered by an incoming
 message.
+
+## Phase 6: admin item browser
+
+`GET /admin/items` (`app/items_view.py` + `app/templates/items.html`) is a
+plain server-rendered page over the same `items` table every other phase
+already writes to — a small overview (counts by type/status, a 7-day
+capture bar chart from `inbox.captured_at`) plus a filterable, paginated
+list. Each row is two sibling `<form>`s (never nested — see the Phase 1
+lesson on that in git history): one to edit the title, one to toggle
+open/done. Both post back to `/admin/items/{id}/edit` and `.../toggle`
+under the same session + CSRF checks as every other admin route.
+
+The "go back to where I was" redirect after an edit/toggle is rebuilt
+server-side from three individually re-validated hidden fields
+(`redirect_type`, `redirect_status`, `redirect_page`) rather than trusting
+a round-tripped querystring — form data is client-supplied, and an
+unvalidated string ending up in a redirect `Location` header is exactly
+the kind of thing worth not doing even when the practical blast radius (an
+attacker redirecting their own browser on their own session) is minimal.
+
+Deliberately out of scope: bulk actions, deleting an item, restoring a
+deleted item, and any chart beyond the one simple 7-day bar — see
+`FUTURE.md`.

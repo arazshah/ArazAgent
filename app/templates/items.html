@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}آیتم‌ها{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>آیتم‌ها</h1>
+  <a href="{{ admin_path }}/settings">بازگشت به تنظیمات</a>
+</div>
+
+{% if flash %}<p class="flash">{{ flash }}</p>{% endif %}
+
+<section class="card">
+  <h2>نمای کلی</h2>
+  <p>مجموع: {{ total }}</p>
+  <p>
+    {% for t, c in by_type.items() %}
+      <span class="badge badge-default">{{ type_labels.get(t, t) }}: {{ c }}</span>
+    {% endfor %}
+  </p>
+  <p>
+    {% for s, c in by_status.items() %}
+      <span class="badge badge-default">{{ s }}: {{ c }}</span>
+    {% endfor %}
+  </p>
+  {% if daily %}
+  <div class="chart">
+    {% for day, count in daily %}
+    <div class="chart-bar" style="height: {{ ((count / max_daily * 100) if max_daily else 0) | round(0, 'ceil') }}%;" title="{{ day }}: {{ count }}"></div>
+    {% endfor %}
+  </div>
+  <p class="hint">ثبت‌شده در ۷ روز اخیر (چپ = قدیم‌تر)</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>فیلتر</h2>
+  <form method="get" action="{{ admin_path }}/items" class="inline-form">
+    <select name="type">
+      <option value="">همه انواع</option>
+      {% for t in ["task", "note", "idea", "event"] %}
+      <option value="{{ t }}" {% if filter_type == t %}selected{% endif %}>{{ type_labels.get(t, t) }}</option>
+      {% endfor %}
+    </select>
+    <select name="status">
+      <option value="">همه وضعیت‌ها</option>
+      <option value="open" {% if filter_status == "open" %}selected{% endif %}>open</option>
+      <option value="done" {% if filter_status == "done" %}selected{% endif %}>done</option>
+    </select>
+    <button type="submit" class="secondary">اعمال فیلتر</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>لیست ({{ total }})</h2>
+  {% if not items %}
+  <p class="hint">چیزی پیدا نشد.</p>
+  {% endif %}
+  {% for item in items %}
+  <div class="item-row">
+    <div class="item-meta">
+      <span class="badge badge-default">{{ type_labels.get(item[1], item[1]) }}</span>
+      <span class="hint">#{{ item[0] }} · {{ item[3] }}{% if item[4] %} · تا {{ item[4] }}{% endif %}</span>
+    </div>
+    <form method="post" action="{{ admin_path }}/items/{{ item[0] }}/edit" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="redirect_type" value="{{ filter_type }}">
+      <input type="hidden" name="redirect_status" value="{{ filter_status }}">
+      <input type="hidden" name="redirect_page" value="{{ page }}">
+      <input type="text" name="title" value="{{ item[2] }}">
+      <button type="submit" class="secondary small">ذخیره</button>
+    </form>
+    <form method="post" action="{{ admin_path }}/items/{{ item[0] }}/toggle" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="redirect_type" value="{{ filter_type }}">
+      <input type="hidden" name="redirect_status" value="{{ filter_status }}">
+      <input type="hidden" name="redirect_page" value="{{ page }}">
+      <input type="hidden" name="new_status" value="{{ 'done' if item[3] == 'open' else 'open' }}">
+      <button type="submit" class="small">{{ 'بستن' if item[3] == 'open' else 'بازکردن' }}</button>
+    </form>
+  </div>
+  {% endfor %}
+</section>
+
+{% if total_pages > 1 %}
+<section class="card">
+  <p>صفحه {{ page }} از {{ total_pages }}</p>
+  <p>
+    {% if page > 1 %}<a href="{{ admin_path }}/items?type={{ filter_type }}&status={{ filter_status }}&page={{ page - 1 }}">قبلی</a>{% endif %}
+    {% if page < total_pages %}<a href="{{ admin_path }}/items?type={{ filter_type }}&status={{ filter_status }}&page={{ page + 1 }}">بعدی</a>{% endif %}
+  </p>
+</section>
+{% endif %}
+{% endblock %}
