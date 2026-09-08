@@ -73,3 +73,69 @@ async def test_items_empty_reports_nothing_yet(pool, crypto):
     await handle_update(make_text_update(1, 999, "/items"), ctx)
 
     assert "هنوز" in provider.sent[-1][1]
+
+
+async def test_tasks_lists_only_open_tasks_ordered_by_deadline(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+    await _insert_item(pool, "task", "later task", "2026-02-01")
+    await _insert_item(pool, "task", "sooner task", "2026-01-01")
+    await _insert_item(pool, "idea", "not a task")
+
+    await handle_update(make_text_update(1, 999, "/tasks"), ctx)
+
+    reply = provider.sent[-1][1]
+    assert "not a task" not in reply
+    assert reply.index("sooner task") < reply.index("later task")
+
+
+async def test_tasks_excludes_done_tasks(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO items (type, title, decision, status) "
+            "VALUES ('task', 'already done', 'auto', 'done')"
+        )
+
+    await handle_update(make_text_update(1, 999, "/tasks"), ctx)
+
+    assert "کار بازی وجود ندارد" in provider.sent[-1][1]
+
+
+async def test_done_marks_task_closed(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "INSERT INTO items (type, title, decision) VALUES ('task', 'buy milk', 'auto') "
+            "RETURNING id"
+        )
+        (item_id,) = await cur.fetchone()
+
+    await handle_update(make_text_update(1, 999, f"/done {item_id}"), ctx)
+
+    assert "بسته شد: buy milk" in provider.sent[-1][1]
+
+    async with pool.connection() as conn:
+        cur = await conn.execute("SELECT status FROM items WHERE id = %s", (item_id,))
+        (status,) = await cur.fetchone()
+    assert status == "done"
+
+
+async def test_done_unknown_id_reports_not_found(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+
+    await handle_update(make_text_update(1, 999, "/done 999999"), ctx)
+
+    assert "پیدا نشد" in provider.sent[-1][1]
+
+
+async def test_done_without_id_shows_usage(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+
+    await handle_update(make_text_update(1, 999, "/done"), ctx)
+
+    assert "استفاده" in provider.sent[-1][1]

@@ -116,3 +116,19 @@ the admin UI.
 Deliberately out of scope for Phase 2 (see `FUTURE.md`): an item browser or
 editor in the admin UI, human review/override of a triage decision,
 planning/scoring/scheduling on top of `items`, and embeddings/search.
+
+## Phase 3: task management (bot commands only)
+
+Two bot commands operate directly on `items.status`, no new tables or admin
+UI:
+
+- **`/tasks`** — lists `items` where `type = 'task' AND status = 'open'`,
+  ordered by `deadline` (nulls last) then `created_at`.
+- **`/done <id>`** — sets that item's `status = 'done'`. Any `items` row can
+  be closed this way, not only ones the LLM tagged `task` — the id is
+  whatever `/items` or `/tasks` printed.
+
+Both live in `app/commands.py` and query the pool directly (no new module —
+the queries are simple enough not to warrant one). There is still no
+priority, no editing, and no way to reopen a closed item from the bot; see
+`FUTURE.md`.

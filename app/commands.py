@@ -1,6 +1,6 @@
-"""Bot commands: /start /today /stats. No admin commands over the bot — all
-configuration happens in the web UI, so a compromised messaging account can
-never change settings.
+"""Bot commands: /start /today /stats /items /tasks /done. No admin commands
+over the bot — all configuration happens in the web UI, so a compromised
+messaging account can never change settings.
 """
 
 from __future__ import annotations
@@ -18,14 +18,19 @@ START_TEXT = (
     "هر چیزی به ذهنت آمد بفرست — متن، ویس، فوروارد، لینک.\n"
     "دسته‌بندی نکن. توضیح نده. فقط بفرست.\n\n"
     "/today برای شمارش\n"
-    "/items برای دیدن آخرین آیتم‌های دسته‌بندی‌شده"
+    "/items برای دیدن آخرین آیتم‌های دسته‌بندی‌شده\n"
+    "/tasks برای دیدن کارهای باز\n"
+    "/done شماره برای بستن یک کار"
 )
 
 UNKNOWN_COMMAND_TEXT = "دستور ناشناخته."
 
 NO_ITEMS_TEXT = "هنوز هیچ آیتمی دسته‌بندی نشده است."
+NO_OPEN_TASKS_TEXT = "کار بازی وجود ندارد."
+DONE_USAGE_TEXT = "استفاده: /done شماره (مثلاً /done 5)"
 
 ITEMS_LIMIT = 10
+TASKS_LIMIT = 20
 
 _TYPE_LABEL = {"task": "📌 کار", "note": "📝 یادداشت", "idea": "💡 ایده", "event": "📅 رویداد"}
 
@@ -43,6 +48,10 @@ async def dispatch(msg: IncomingMessage, ctx: CaptureContext) -> None:
         await _stats(msg, ctx)
     elif command == "items":
         await _items(msg, ctx)
+    elif command == "tasks":
+        await _tasks(msg, ctx)
+    elif command == "done":
+        await _mark_done(msg, ctx)
     else:
         await ctx.provider.send_message(msg.chat_id, UNKNOWN_COMMAND_TEXT)
 
@@ -98,3 +107,58 @@ async def _items(msg: IncomingMessage, ctx: CaptureContext) -> None:
         lines.append(line)
 
     await ctx.provider.send_message(msg.chat_id, "\n".join(lines))
+
+
+async def _tasks(msg: IncomingMessage, ctx: CaptureContext) -> None:
+    assert msg.chat_id is not None
+    async with ctx.pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            SELECT id, title, deadline FROM items
+            WHERE type = 'task' AND status = 'open'
+            ORDER BY deadline NULLS LAST, created_at
+            LIMIT %s
+            """,
+            (TASKS_LIMIT,),
+        )
+        rows = await cur.fetchall()
+
+    if not rows:
+        await ctx.provider.send_message(msg.chat_id, NO_OPEN_TASKS_TEXT)
+        return
+
+    lines = ["کارهای باز:"]
+    for item_id, title, deadline in rows:
+        line = f"#{item_id} {title}"
+        if deadline is not None:
+            line += f" (تا {deadline.isoformat()})"
+        lines.append(line)
+    lines.append("\nبرای بستن یک کار: /done شماره")
+
+    await ctx.provider.send_message(msg.chat_id, "\n".join(lines))
+
+
+async def _mark_done(msg: IncomingMessage, ctx: CaptureContext) -> None:
+    assert msg.chat_id is not None
+    assert msg.text is not None
+    parts = msg.text.strip().split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await ctx.provider.send_message(msg.chat_id, DONE_USAGE_TEXT)
+        return
+
+    item_id = int(parts[1])
+    async with ctx.pool.connection() as conn:
+        cur = await conn.execute(
+            "UPDATE items SET status = 'done', updated_at = now() "
+            "WHERE id = %s AND status != 'done' RETURNING title",
+            (item_id,),
+        )
+        row = await cur.fetchone()
+
+    if row is None:
+        await ctx.provider.send_message(
+            msg.chat_id, f"آیتم #{item_id} پیدا نشد یا قبلاً بسته شده است."
+        )
+        return
+
+    await ctx.provider.send_message(msg.chat_id, f"✅ بسته شد: {row[0]}")
