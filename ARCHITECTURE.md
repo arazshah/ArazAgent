@@ -320,3 +320,57 @@ repeated nagging for overdue tasks — one reminder, ever, per task; see
 `FUTURE.md`. `due_reminders()` is tested directly against real rows, same
 "test the DB/pure logic, leave the infinite loop itself untested" split as
 `app.review.is_due()`.
+
+## Constitution-driven scoring: from classifier to gatekeeper
+
+Every phase through Phase 8 made triage a better **classifier** — type,
+title, deadline, embedding, Shamsi dates. None of it made triage say "no."
+`items.decision` existed since Phase 2 but every row got the same literal
+value, `'auto'` — a placeholder marking "the LLM touched this," not an
+actual decision. `app/constitution.py` and the rewritten
+`app/llm._TRIAGE_SYSTEM_PROMPT` turn triage into an actual gatekeeper:
+
+```
+ app/triage.triage_inbox_row()
+        │
+        ▼
+ app/constitution.build_constitution_context(pool, settings)
+        │  - goals: parsed from the constitution.goals setting
+        │    ("title:weight; title2:weight2" — free text, not a table;
+        │    see the module docstring for why)
+        │  - hard_rules: free text from constitution.hard_rules
+        │  - remaining_capacity_hours: constitution.weekly_capacity_hours
+        │    minus the summed effort_minutes of every open task (a rough
+        │    "how full is your plate right now" proxy, not a strict
+        │    weekly ledger)
+        ▼
+ app/llm.classify_capture(..., constitution)
+        │  prompt states the goals (weighted), hard rules, and remaining
+        │  capacity; if capacity is near zero, the model is explicitly
+        │  told to only ever answer "schedule" or "decline", never
+        │  "do_now"
+        ▼
+ items.decision  ∈ {do_now, schedule, delegate, archive, decline}
+ items.score     0-25 (goal alignment ×3, compounding value ×3, economic
+                  value ×2, irreversibility ×2, minus real time/mental
+                  cost ×2 — all judged by the model, not computed in code)
+ items.meta      {"what_to_drop_instead": "..."} when decision is
+                  "do_now" under tight capacity — the model is asked what
+                  open item should be dropped in exchange, so accepting
+                  new work is never free
+```
+
+Decision and score are informational only — this pass deliberately does
+**not** change `items.status` based on decision, and does not (yet) push
+the decision back to the user as a bot reply after capture (both are
+natural next steps, not built now; see FUTURE.md). What's visible today:
+`/items` shows the decision and score inline, and the admin item browser
+shows both as a badge and a hint alongside every row.
+
+With no goals configured (`constitution.goals` empty — the expected state
+until they're figured out), the prompt tells the model to score on general
+judgment (impact/value/irreversibility) instead of goal alignment, and
+`goal_key` becomes free text rather than a fixed set. Nothing breaks;
+scoring is just less targeted until goals exist. `app.constitution`'s
+parsing and capacity math are pure/DB-only and fully unit-tested
+independent of the LLM.

@@ -130,4 +130,22 @@ GROUPS: dict[str, list[FieldSpec]] = {
             validate_positive_int,
         ),
     ],
+    "constitution": [
+        FieldSpec(
+            "constitution.goals",
+            "اهداف (با ; جدا کن، مثال: مرجع GeoAI فارسی:3; درآمد ریموت:3)",
+            False,
+        ),
+        FieldSpec(
+            "constitution.hard_rules",
+            "قوانین سخت «نه» (با ; جدا کن)",
+            False,
+        ),
+        FieldSpec(
+            "constitution.weekly_capacity_hours",
+            "ظرفیت واقعی هفتگی (ساعت)",
+            False,
+            validate_positive_int,
+        ),
+    ],
 }

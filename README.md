@@ -1,4 +1,4 @@
-# araz-agent — Personal Capture + Triage + Task + Search + Review + Admin Browser Layer (Phase 8 + reminders)
+# araz-agent — Personal Capture + Triage + Task + Search + Review + Admin Browser + Gatekeeper Layer
 
 Single-user capture assistant for the Bale messenger. Receives text and voice
 notes, transcribes voice via AvalAI, classifies each capture into a typed
@@ -25,13 +25,26 @@ turned up and fixed in the retry logic itself). **Phase 8 adds the Shamsi
 (Jalali) calendar**: the triage LLM understands Persian dates the user
 actually writes ("۱۵ مهر", "دوشنبه‌ی بعد"), and every deadline shown to a
 human — bot replies, the admin item browser — displays in Shamsi.
-Storage stays Gregorian throughout. On top of that, **open tasks with a
-deadline now get a one-time reminder** before they're due (default: the
-day before, on by default — configurable under the "یادآوری" group in the
-admin UI). No planning or scoring logic yet; see `FUTURE.md` for what's
-still deferred (including the rest of the roadmap discussed but not yet
-built: bot-side edit/delete, recurring tasks, an inbox browser, OCR,
-analytics, export, calendar sync).
+Storage stays Gregorian throughout. On top of that, open tasks with a
+deadline get a one-time reminder before they're due (default: the day
+before, on by default — configurable under the "یادآوری" group in the
+admin UI).
+
+**Triage is now a gatekeeper, not just a classifier.** Every capture is
+scored 0-25 against a "constitution" — weighted 12-month goals, hard "no"
+rules, and a rough weekly-capacity budget, all configurable in the admin
+UI under "قانون اساسی" (`constitution.goals`, `constitution.hard_rules`,
+`constitution.weekly_capacity_hours`) — and gets a real decision: do it
+now, schedule it, delegate it, archive it, or decline it. If capacity is
+tight, the model is told to only ever answer "schedule" or "decline." No
+goals defined yet? That's fine — it falls back to general judgment until
+you fill them in. See `ARCHITECTURE.md`'s "Constitution-driven scoring"
+section for exactly how, and `FUTURE.md` for what this doesn't do yet
+(the decision isn't pushed back to the user as a bot reply, and it doesn't
+auto-change `items.status` — both deliberately left for later, along with
+the rest of the roadmap: a real goals table with a CRUD UI, a decision
+calibration log, commitments-to-others tracking, a personal CRM, and
+more).
 
 > Status: skeleton under active development. Sections below are being filled
 > in as each part of the system lands (see commit history / PR).

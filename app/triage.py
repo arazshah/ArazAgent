@@ -3,22 +3,30 @@ row via a single LLM call (app.llm.classify_capture). Same contract as
 transcription (app/transcribe/orchestrator.py): never raises, and any
 failure leaves inbox.processed_at unset so the row stays in the
 `inbox_unprocessed` queue for app.recovery to retry later — never drop.
+
+Scores and gatekeeps against app.constitution's goals/hard-rules/capacity
+rather than just labeling — see ARCHITECTURE.md's "Constitution-driven
+scoring" section.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date
 
 from psycopg_pool import AsyncConnectionPool
 
+from app.constitution import build_constitution_context
 from app.embeddings import embed_item
-from app.llm import VALID_ITEM_TYPES, classify_capture
+from app.llm import VALID_DECISIONS, VALID_ITEM_TYPES, classify_capture
 from app.settings_store import SettingsStore
 
 logger = logging.getLogger(__name__)
 
 MAX_TITLE_LENGTH = 200
+DEFAULT_DECISION = "schedule"
+MIN_SCORE, MAX_SCORE = 0, 25
 
 
 async def _mark_processed(pool: AsyncConnectionPool, inbox_id: int) -> None:
@@ -52,6 +60,22 @@ def _clean_deadline(value: object) -> str | None:
         return None
 
 
+def _clean_score(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        n = value
+    elif isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        n = int(value.strip())
+    else:
+        return None
+    return max(MIN_SCORE, min(MAX_SCORE, n))
+
+
+def _clean_decision(value: object) -> str:
+    return value if value in VALID_DECISIONS else DEFAULT_DECISION
+
+
 async def triage_inbox_row(
     pool: AsyncConnectionPool, settings: SettingsStore, inbox_id: int, text: str | None
 ) -> None:
@@ -75,7 +99,8 @@ async def triage_inbox_row(
         )
         return  # leave unprocessed; recovery retries once configured
 
-    result = await classify_capture(base_url, api_key, model, text)
+    constitution = await build_constitution_context(pool, settings)
+    result = await classify_capture(base_url, api_key, model, text, constitution)
     if "error" in result:
         logger.warning("triage failed for inbox_id=%s: %s", inbox_id, result["error"])
         return  # leave unprocessed; recovery retries
@@ -84,14 +109,16 @@ async def triage_inbox_row(
     if item_type not in VALID_ITEM_TYPES:
         item_type = "note"
     title = (_clean_text(result.get("title")) or text.strip())[:MAX_TITLE_LENGTH]
+    what_to_drop = _clean_text(result.get("what_to_drop_instead"))
+    meta = {"what_to_drop_instead": what_to_drop} if what_to_drop else {}
 
     async with pool.connection() as conn:
         cur = await conn.execute(
             """
             INSERT INTO items (
                 inbox_id, type, title, project, goal_key, effort_minutes,
-                deadline, decision, decision_reason
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'auto', %s)
+                deadline, score, decision, decision_reason, meta
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
             RETURNING id
             """,
             (
@@ -102,7 +129,10 @@ async def triage_inbox_row(
                 _clean_text(result.get("goal_key")),
                 _clean_effort_minutes(result.get("effort_minutes")),
                 _clean_deadline(result.get("deadline")),
+                _clean_score(result.get("score")),
+                _clean_decision(result.get("decision")),
                 _clean_text(result.get("decision_reason")),
+                json.dumps(meta),
             ),
         )
         row = await cur.fetchone()

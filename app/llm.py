@@ -26,10 +26,23 @@ from app.tz import TEHRAN
 logger = logging.getLogger(__name__)
 
 VALID_ITEM_TYPES = ("task", "note", "idea", "event")
+VALID_DECISIONS = ("do_now", "schedule", "delegate", "archive", "decline")
 
-_TRIAGE_SYSTEM_PROMPT = """تو بخشی از یک دستیار شخصی هستی که پیام‌های ثبت‌شده‌ی کاربر را \
-دسته‌بندی می‌کند. امروز {today} است به تقویم میلادی، برابر با {today_jalali} \
-به تقویم شمسی (منطقه‌ی زمانی تهران).
+_TRIAGE_SYSTEM_PROMPT = """تو دروازه‌بان آراز هستی، نه فقط یک دسته‌بند. کارت این نیست که \
+کمک کنی همه‌چیز انجام شود؛ کارت این است که جلوی انجام‌شدن چیزهای کم‌ارزش را بگیری.
+
+امروز {today} است به تقویم میلادی، برابر با {today_jalali} به تقویم شمسی \
+(منطقه‌ی زمانی تهران).
+
+اهداف ۱۲‌ماهه (هرچه وزن بالاتر، اهمیت بیشتر):
+{goals_block}
+
+قوانین سخت (این‌ها قابل‌نقض نیستند):
+{hard_rules_block}
+
+ظرفیت باقی‌مانده تقریباً {remaining_capacity_hours:.0f} ساعت از \
+{weekly_capacity_hours} ساعت ظرفیت هفتگی است. اگر این عدد صفر یا منفی است، \
+فقط "schedule" یا "decline" پیشنهاد بده، نه "do_now".
 
 کاربر ممکن است به تاریخ به هر شکلی اشاره کند: شمسی ("۱۵ مهر", "دوشنبه‌ی \
 بعد")، میلادی، یا نسبی ("فردا", "هفته‌ی دیگر"). آن را با توجه به تاریخ امروز \
@@ -43,15 +56,28 @@ _TRIAGE_SYSTEM_PROMPT = """تو بخشی از یک دستیار شخصی هست�
 "idea" (ایده)، "event" (رویداد/قرار زمان‌دار),
   "title": خلاصه‌ی کوتاه فارسی (حداکثر ۸۰ کاراکتر),
   "project": نام پروژه‌ی مرتبط اگر از متن مشخص است، وگرنه null,
-  "goal_key": یک شناسه‌ی کوتاه لاتین (snake_case) برای هدف مرتبط اگر مشخص \
-است، وگرنه null,
+  "goal_key": عنوان دقیق یکی از اهداف بالا اگر این آیتم به آن مرتبط است، \
+وگرنه null,
   "effort_minutes": تخمین زمان لازم به دقیقه (عدد صحیح) اگر قابل‌تخمین \
 است، وگرنه null,
   "deadline": تاریخ سررسید به‌صورت YYYY-MM-DD **میلادی** اگر متن به آن \
 اشاره دارد، وگرنه null,
-  "decision_reason": یک جمله‌ی کوتاه فارسی که دلیل این دسته‌بندی را \
-توضیح می‌دهد
+  "score": عدد صحیح ۰ تا ۲۵ بر اساس مجموع این معیارها (هرکدام ۰ تا ۵): \
+هم‌راستایی با اهداف بالا (وزن ۳)، اثر مرکب/بلندمدت (وزن ۳)، ارزش اقتصادی \
+نسبت به زمان (وزن ۲)، برگشت‌ناپذیری در صورت انجام‌نشدن (وزن ۲)، منهای \
+هزینه‌ی واقعی زمانی و بار ذهنی (وزن ۲، منفی),
+  "decision": یکی از "do_now" (همین حالا انجام بده)، "schedule" \
+(زمان‌بندی کن)، "delegate" (بسپار)، "archive" (بایگانی کن)، "decline" \
+(رد کن),
+  "decision_reason": یک جمله‌ی کوتاه فارسی که این تصمیم را توضیح می‌دهد,
+  "what_to_drop_instead": اگر decision برابر "do_now" است و ظرفیت محدود \
+است، پیشنهاد بده چه کار باز دیگری کنار گذاشته شود؛ در غیر این صورت null
 }}
+
+اگر آیتم با هیچ‌کدام از اهداف بالا ارتباط ندارد، پیش‌فرض "decline" یا \
+"archive" است، مگر اینکه یک تعهد فوری و مشخص باشد (مثلاً قرار با فرد دیگری). \
+اگر هیچ هدفی هنوز تعریف نشده، بر اساس قضاوت عمومی از اثر/ارزش/برگشت‌ناپذیری \
+امتیاز بده.
 """
 
 
@@ -65,8 +91,31 @@ def _strip_code_fence(content: str) -> str:
     return content
 
 
-async def classify_capture(base_url: str, api_key: str, model: str, text: str) -> dict:
-    """Classify one captured text into the `items` shape (see db/schema.sql).
+def _format_prompt(constitution: dict) -> str:
+    goals = constitution.get("goals") or []
+    goals_block = (
+        "\n".join(f"- {title} (وزن {weight})" for title, weight in goals)
+        or "(هنوز هدفی تعریف نشده — بر اساس قضاوت عمومی امتیاز بده.)"
+    )
+    hard_rules_block = constitution.get("hard_rules") or "(قانون سخت خاصی تعریف نشده.)"
+
+    return _TRIAGE_SYSTEM_PROMPT.format(
+        today=datetime.now(TEHRAN).date().isoformat(),
+        today_jalali=today_jalali_str(),
+        goals_block=goals_block,
+        hard_rules_block=hard_rules_block,
+        remaining_capacity_hours=constitution.get("remaining_capacity_hours", 0.0),
+        weekly_capacity_hours=constitution.get("weekly_capacity_hours", 0),
+    )
+
+
+async def classify_capture(
+    base_url: str, api_key: str, model: str, text: str, constitution: dict
+) -> dict:
+    """Classify one captured text into the `items` shape (see db/schema.sql),
+    scoring and gatekeeping it against `constitution` (see
+    app.constitution.build_constitution_context) rather than just labeling
+    it.
 
     Never raises — any failure (network, malformed JSON, an empty response)
     comes back as {"error": ...} so the caller (app/triage.py) can leave the
@@ -74,8 +123,7 @@ async def classify_capture(base_url: str, api_key: str, model: str, text: str) -
     """
     client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=30)
     try:
-        today = datetime.now(TEHRAN).date().isoformat()
-        prompt = _TRIAGE_SYSTEM_PROMPT.format(today=today, today_jalali=today_jalali_str())
+        prompt = _format_prompt(constitution)
 
         async def call():
             return await client.chat.completions.create(

@@ -39,7 +39,7 @@ async def list_items(
     async with pool.connection() as conn:
         cur = await conn.execute(
             f"""
-            SELECT id, type, title, status, deadline, created_at
+            SELECT id, type, title, status, deadline, created_at, decision, score
             FROM items
             {where}
             ORDER BY created_at DESC

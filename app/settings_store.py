@@ -122,6 +122,21 @@ _DEFS: list[SettingDef] = [
     SettingDef("review.last_sent_date", "review", False, "", _env_var_for("review.last_sent_date")),
     SettingDef("reminder.enabled", "reminder", False, "true", _env_var_for("reminder.enabled")),
     SettingDef("reminder.lead_hours", "reminder", False, "24", _env_var_for("reminder.lead_hours")),
+    SettingDef("constitution.goals", "constitution", False, "", _env_var_for("constitution.goals")),
+    SettingDef(
+        "constitution.hard_rules",
+        "constitution",
+        False,
+        "",
+        _env_var_for("constitution.hard_rules"),
+    ),
+    SettingDef(
+        "constitution.weekly_capacity_hours",
+        "constitution",
+        False,
+        "40",
+        _env_var_for("constitution.weekly_capacity_hours"),
+    ),
 ]
 
 DEFS_BY_KEY: dict[str, SettingDef] = {d.key: d for d in _DEFS}

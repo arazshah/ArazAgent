@@ -70,6 +70,8 @@
     <div class="item-meta">
       <span class="badge badge-default">{{ type_labels.get(item[1], item[1]) }}</span>
       <span class="item-status {{ item[3] }}">{{ item[3] }}</span>
+      {% if item[6] %}<span class="badge badge-default">{{ decision_labels.get(item[6], item[6]) }}</span>{% endif %}
+      {% if item[7] is not none %}<span class="hint">امتیاز {{ item[7] }}</span>{% endif %}
       {% if item[4] %}<span class="item-deadline">⏰ تا {{ item[4] | jalali }}</span>{% endif %}
       <span class="item-id">#{{ item[0] }}</span>
     </div>

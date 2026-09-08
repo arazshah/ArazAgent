@@ -47,6 +47,7 @@ _GROUP_LABELS = {
     "system": "سیستم",
     "review": "مرور دوره‌ای",
     "reminder": "یادآوری",
+    "constitution": "قانون اساسی",
 }
 
 _GROUP_ICONS = {
@@ -56,6 +57,7 @@ _GROUP_ICONS = {
     "system": "⚙️",
     "review": "🗓️",
     "reminder": "⏰",
+    "constitution": "📜",
 }
 
 _ITEM_TYPE_LABELS = {
@@ -63,6 +65,14 @@ _ITEM_TYPE_LABELS = {
     "note": "📝 یادداشت",
     "idea": "💡 ایده",
     "event": "📅 رویداد",
+}
+
+_ITEM_DECISION_LABELS = {
+    "do_now": "🟢 همین حالا",
+    "schedule": "🟡 زمان‌بندی",
+    "delegate": "🔵 بسپار",
+    "archive": "⚪ بایگانی",
+    "decline": "🔴 رد شد",
 }
 
 
@@ -526,6 +536,7 @@ def build_admin_router(boot: Bootstrap) -> APIRouter:
                 "flash": request.query_params.get("flash"),
                 "items": rows,
                 "type_labels": _ITEM_TYPE_LABELS,
+                "decision_labels": _ITEM_DECISION_LABELS,
                 "filter_type": item_type,
                 "filter_status": status,
                 "page": page,

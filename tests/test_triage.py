@@ -98,7 +98,7 @@ async def test_classification_error_leaves_row_unprocessed(pool, crypto, monkeyp
     await _configure_llm(settings)
     inbox_id = await _insert_row(pool)
 
-    async def fake_classify(base_url, api_key, model, text):
+    async def fake_classify(base_url, api_key, model, text, constitution):
         return {"error": "upstream exploded"}
 
     monkeypatch.setattr(triage, "classify_capture", fake_classify)
@@ -116,7 +116,7 @@ async def test_successful_classification_inserts_item_and_marks_processed(
     await _configure_llm(settings)
     inbox_id = await _insert_row(pool, raw_text="call the dentist by 2026-01-05, ~15 min")
 
-    async def fake_classify(base_url, api_key, model, text):
+    async def fake_classify(base_url, api_key, model, text, constitution):
         return {
             "type": "task",
             "title": "تماس با دندان‌پزشک",
@@ -140,7 +140,7 @@ async def test_successful_classification_inserts_item_and_marks_processed(
             "health",
             15,
             date(2026, 1, 5),
-            "auto",
+            "schedule",  # no "decision" key in the fake response -> DEFAULT_DECISION
             "زمان‌بندی مشخصی دارد",
         )
     ]
@@ -152,7 +152,7 @@ async def test_unknown_type_falls_back_to_note(pool, crypto, monkeypatch):
     await _configure_llm(settings)
     inbox_id = await _insert_row(pool)
 
-    async def fake_classify(base_url, api_key, model, text):
+    async def fake_classify(base_url, api_key, model, text, constitution):
         return {"type": "something-unexpected", "title": "x"}
 
     monkeypatch.setattr(triage, "classify_capture", fake_classify)
@@ -168,7 +168,7 @@ async def test_garbage_optional_fields_are_dropped_not_fatal(pool, crypto, monke
     await _configure_llm(settings)
     inbox_id = await _insert_row(pool)
 
-    async def fake_classify(base_url, api_key, model, text):
+    async def fake_classify(base_url, api_key, model, text, constitution):
         return {
             "type": "note",
             "title": "",  # falls back to the raw text
@@ -195,7 +195,7 @@ async def test_successful_classification_triggers_embedding(pool, crypto, monkey
     await _configure_llm(settings)
     inbox_id = await _insert_row(pool, raw_text="buy milk")
 
-    async def fake_classify(base_url, api_key, model, text):
+    async def fake_classify(base_url, api_key, model, text, constitution):
         return {"type": "note", "title": "buy milk"}
 
     monkeypatch.setattr(triage, "classify_capture", fake_classify)
@@ -214,3 +214,103 @@ async def test_successful_classification_triggers_embedding(pool, crypto, monkey
     item_id, text = embed_calls[0]
     assert text == "buy milk"
     assert rows[0][1] == "buy milk"  # sanity: same triage run produced the item
+
+
+async def _score_and_decision(pool, inbox_id: int):
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            "SELECT score, decision, meta FROM items WHERE inbox_id = %s", (inbox_id,)
+        )
+        return await cur.fetchone()
+
+
+async def test_classify_capture_receives_constitution_context(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    await settings.set("constitution.goals", "مرجع GeoAI فارسی:5")
+    await settings.set("constitution.weekly_capacity_hours", "10")
+    inbox_id = await _insert_row(pool)
+
+    received = {}
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        received.update(constitution)
+        return {"type": "note", "title": "x"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    assert received["goals"] == [("مرجع GeoAI فارسی", 5)]
+    assert received["weekly_capacity_hours"] == 10
+
+
+async def test_valid_decision_and_score_are_stored(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x", "decision": "do_now", "score": 20}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    score, decision, meta = await _score_and_decision(pool, inbox_id)
+    assert score == 20
+    assert decision == "do_now"
+    assert meta == {}
+
+
+async def test_invalid_decision_falls_back_to_schedule(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x", "decision": "nonsense"}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    _score, decision, _meta = await _score_and_decision(pool, inbox_id)
+    assert decision == "schedule"
+
+
+async def test_score_is_clamped_to_valid_range(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {"type": "task", "title": "x", "score": 999}
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    score, _decision, _meta = await _score_and_decision(pool, inbox_id)
+    assert score == 25
+
+
+async def test_what_to_drop_instead_stored_in_meta(pool, crypto, monkeypatch):
+    settings = SettingsStore(pool, crypto)
+    await _configure_llm(settings)
+    inbox_id = await _insert_row(pool)
+
+    async def fake_classify(base_url, api_key, model, text, constitution):
+        return {
+            "type": "task",
+            "title": "x",
+            "decision": "do_now",
+            "what_to_drop_instead": "کار #12 رو کنار بذار",
+        }
+
+    monkeypatch.setattr(triage, "classify_capture", fake_classify)
+
+    await triage.triage_inbox_row(pool, settings, inbox_id, "buy milk")
+
+    _score, _decision, meta = await _score_and_decision(pool, inbox_id)
+    assert meta == {"what_to_drop_instead": "کار #12 رو کنار بذار"}

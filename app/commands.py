@@ -41,6 +41,14 @@ TASKS_LIMIT = 20
 
 _TYPE_LABEL = {"task": "📌 کار", "note": "📝 یادداشت", "idea": "💡 ایده", "event": "📅 رویداد"}
 
+_DECISION_LABEL = {
+    "do_now": "🟢 همین حالا",
+    "schedule": "🟡 زمان‌بندی",
+    "delegate": "🔵 بسپار",
+    "archive": "⚪ بایگانی",
+    "decline": "🔴 رد شد",
+}
+
 
 async def dispatch(msg: IncomingMessage, ctx: CaptureContext) -> None:
     assert msg.text is not None
@@ -100,7 +108,8 @@ async def _items(msg: IncomingMessage, ctx: CaptureContext) -> None:
     assert msg.chat_id is not None
     async with ctx.pool.connection() as conn:
         cur = await conn.execute(
-            "SELECT type, title, deadline FROM items ORDER BY created_at DESC LIMIT %s",
+            "SELECT type, title, deadline, decision, score FROM items "
+            "ORDER BY created_at DESC LIMIT %s",
             (ITEMS_LIMIT,),
         )
         rows = await cur.fetchall()
@@ -110,9 +119,12 @@ async def _items(msg: IncomingMessage, ctx: CaptureContext) -> None:
         return
 
     lines = [f"آخرین {len(rows)} آیتم:"]
-    for item_type, title, deadline in rows:
+    for item_type, title, deadline, decision, score in rows:
         label = _TYPE_LABEL.get(item_type, f"• {item_type}")
-        line = f"{label} — {title}"
+        decision_label = _DECISION_LABEL.get(decision, "")
+        line = f"{label} {decision_label} — {title}"
+        if score is not None:
+            line += f" (امتیاز {score})"
         if deadline is not None:
             line += f" (تا {format_deadline(deadline)})"
         lines.append(line)

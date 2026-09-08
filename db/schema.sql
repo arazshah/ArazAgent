@@ -90,3 +90,9 @@ ALTER TABLE items ADD COLUMN IF NOT EXISTS embedding vector;
 -- reminder (app/reminders.py). NULL until sent; set exactly once so a
 -- task is never reminded twice.
 ALTER TABLE items ADD COLUMN IF NOT EXISTS reminded_at timestamptz;
+
+-- The "constitution" (app/constitution.py, app/llm.py): a 0-25 weighted
+-- score against the goals/hard-rules/capacity configured in app_settings,
+-- computed alongside `decision` (do_now/schedule/delegate/archive/decline
+-- — see app.llm.VALID_DECISIONS) at triage time.
+ALTER TABLE items ADD COLUMN IF NOT EXISTS score int;
