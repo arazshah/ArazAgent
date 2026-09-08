@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}تنظیمات{% endblock %}
+{% block content %}
+<div class="topbar">
+  <h1>تنظیمات لایه ثبت</h1>
+  <form method="post" action="{{ admin_path }}/logout"><button type="submit" class="link">خروج</button></form>
+</div>
+
+{% if flash %}<p class="flash">{{ flash }}</p>{% endif %}
+
+{% for group_name, group in groups.items() %}
+<section class="card">
+  <h2>{{ group.label }}</h2>
+  {% if group.error %}<p class="error">{{ group.error }}</p>{% endif %}
+  <form method="post" action="{{ admin_path }}/settings/{{ group_name }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for f in group.fields %}
+    <div class="field">
+      <label for="{{ f.key }}">{{ f.label }} <span class="badge badge-{{ f.source }}">{{ f.source }}</span></label>
+      {% if f.is_secret %}
+        <input type="password" id="{{ f.key }}" name="{{ f.key }}" placeholder="{{ f.masked_hint or 'تنظیم نشده' }}">
+        <p class="hint">برای تغییر، مقدار جدید را وارد کنید</p>
+        {% if f.masked_hint %}
+        <form method="post" action="{{ admin_path }}/settings/clear/{{ f.key }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="danger small">پاک کردن</button>
+        </form>
+        {% endif %}
+      {% else %}
+        <input type="text" id="{{ f.key }}" name="{{ f.key }}" value="{{ f.value or '' }}">
+      {% endif %}
+      {% if f.field_error %}<p class="error">{{ f.field_error }}</p>{% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit">ذخیره</button>
+  </form>
+  <form method="post" action="{{ admin_path }}/settings/test/{{ group_name }}" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="secondary">تست اتصال</button>
+  </form>
+  {% if test_results.get(group_name) %}<pre class="test-result">{{ test_results[group_name] }}</pre>{% endif %}
+</section>
+{% endfor %}
+
+<section class="card">
+  <h2>مدیر</h2>
+  <p>رمز عبور: <span class="badge badge-{{ admin_info.source }}">{{ admin_info.source }}</span></p>
+  <p class="hint">تغییر رمز عبور فقط از طریق scripts/set_admin_password.py امکان‌پذیر است.</p>
+  <form method="post" action="{{ admin_path }}/settings/invalidate-sessions" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="danger">خروج از همه نشست‌ها</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>وبهوک</h2>
+  <p>آدرس فعلی: <code>{{ webhook.url or 'ثبت نشده' }}</code></p>
+  <p class="hint">تغییر به حالت polling نیازمند حذف وبهوک است.</p>
+  <form method="post" action="{{ admin_path }}/webhook/register" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">ثبت وبهوک</button>
+  </form>
+  <form method="post" action="{{ admin_path }}/webhook/delete" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="danger">حذف وبهوک</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>وضعیت</h2>
+  <p>مجموع ثبت‌شده: {{ status.total }}</p>
+  <p>امروز: {{ status.today }}</p>
+  <p>وضعیت پایگاه‌داده: {{ 'متصل' if status.db_ok else 'قطع' }}</p>
+  <p>نسخه: {{ status.git_sha }}</p>
+  <p>حالت فعلی: {{ status.mode }}</p>
+  <ul>
+    {% for k, v in status.by_transcript_status.items() %}
+    <li>{{ k }}: {{ v }}</li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ admin_path }}/recover" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">بازیابی رونویسی‌های معلق</button>
+  </form>
+</section>
+{% endblock %}

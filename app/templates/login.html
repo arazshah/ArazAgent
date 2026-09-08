@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}ورود{% endblock %}
+{% block content %}
+<div class="login-box">
+  <form method="post" action="{{ admin_path }}/login">
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <label for="password">رمز عبور</label>
+    <input type="password" id="password" name="password" autofocus required>
+    <button type="submit">ورود</button>
+  </form>
+</div>
+{% endblock %}

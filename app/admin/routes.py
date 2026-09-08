@@ -1,0 +1,451 @@
+"""Admin UI: login, settings page, test-connection buttons, webhook panel,
+status panel. Mounted at ADMIN_PATH. No admin UI route is reachable without
+a password configured, not even the login page — a missing password hash
+(both DB and env) returns 503 site-wide under this router.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from pathlib import Path
+
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from app import tz
+from app.admin.forms import GROUPS
+from app.bootstrap import Bootstrap
+from app.db import check_ready
+from app.llm import test_chat_connection
+from app.security import (
+    LOGIN_CONSTANT_DELAY_SECONDS,
+    SESSION_COOKIE_NAME,
+    LoginRateLimiter,
+    client_ip,
+    create_session_cookie,
+    csrf_token_for,
+    verify_csrf,
+    verify_password,
+    verify_session_cookie,
+)
+from app.settings_store import SettingsError, SettingsStore
+
+logger = logging.getLogger(__name__)
+
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+_GROUP_LABELS = {
+    "bale": "بله",
+    "llm": "هوش مصنوعی",
+    "transcription": "رونویسی",
+    "system": "سیستم",
+}
+
+
+def _templates() -> Jinja2Templates:
+    return Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+async def _current_epoch(settings: SettingsStore) -> int:
+    raw = await settings.get("admin.session_epoch") or "1"
+    try:
+        return int(raw)
+    except ValueError:
+        return 1
+
+
+async def _password_configured(settings: SettingsStore) -> bool:
+    return bool(await settings.get("admin.password_hash"))
+
+
+def _get_session_cookie(request: Request) -> str | None:
+    return request.cookies.get(SESSION_COOKIE_NAME)
+
+
+async def _require_session(request: Request, boot: Bootstrap, settings: SettingsStore) -> bool:
+    token = _get_session_cookie(request)
+    if not token:
+        return False
+    epoch = await _current_epoch(settings)
+    return verify_session_cookie(boot.session_secret, token, epoch)
+
+
+def _csrf_for(boot: Bootstrap, session_token: str | None) -> str:
+    return csrf_token_for(boot.session_secret, session_token or "")
+
+
+def build_admin_router(boot: Bootstrap) -> APIRouter:
+    router = APIRouter()
+    templates = _templates()
+    rate_limiter = LoginRateLimiter()
+
+    def _settings(request: Request) -> SettingsStore:
+        return request.app.state.settings  # type: ignore[no-any-return]
+
+    async def _service_unavailable_if_no_password(request: Request) -> HTMLResponse | None:
+        settings = _settings(request)
+        if not await _password_configured(settings):
+            return HTMLResponse(
+                "پیکربندی نشده: رمز عبور مدیر تنظیم نشده است. "
+                "اسکریپت scripts/set_admin_password.py را اجرا کنید.",
+                status_code=503,
+            )
+        return None
+
+    @router.get("/login", response_class=HTMLResponse)
+    async def login_page(request: Request) -> HTMLResponse:
+        unavailable = await _service_unavailable_if_no_password(request)
+        if unavailable is not None:
+            return unavailable
+        return templates.TemplateResponse(
+            request, "login.html", {"admin_path": boot.admin_path, "error": None}
+        )
+
+    @router.post("/login")
+    async def login_submit(request: Request):
+        unavailable = await _service_unavailable_if_no_password(request)
+        if unavailable is not None:
+            return unavailable
+
+        settings = _settings(request)
+        ip = client_ip(request, boot.trust_proxy_headers)
+        form = await request.form()
+        password = str(form.get("password", ""))
+
+        start = time.monotonic()
+        try:
+            if rate_limiter.is_locked_out(ip):
+                logger.warning("admin login rate-limited ip=%s", ip)
+                return PlainTextResponse("too many attempts", status_code=429)
+
+            password_hash = await settings.get("admin.password_hash")
+            ok = password_hash is not None and verify_password(password_hash, password)
+
+            if not ok:
+                rate_limiter.record_failure(ip)
+                logger.warning("admin login failed ip=%s", ip)
+                return templates.TemplateResponse(
+                    request,
+                    "login.html",
+                    {"admin_path": boot.admin_path, "error": "رمز عبور نادرست است"},
+                    status_code=401,
+                )
+
+            rate_limiter.record_success(ip)
+            logger.warning("admin login succeeded ip=%s", ip)
+            epoch = await _current_epoch(settings)
+            token = create_session_cookie(boot.session_secret, epoch)
+            resp = RedirectResponse(f"{boot.admin_path}/settings", status_code=302)
+            resp.set_cookie(
+                SESSION_COOKIE_NAME,
+                token,
+                httponly=True,
+                secure=True,
+                samesite="lax",
+                max_age=12 * 3600,
+            )
+            return resp
+        finally:
+            elapsed = time.monotonic() - start
+            if elapsed < LOGIN_CONSTANT_DELAY_SECONDS:
+                await asyncio.sleep(LOGIN_CONSTANT_DELAY_SECONDS - elapsed)
+
+    @router.post("/logout")
+    async def logout(request: Request) -> RedirectResponse:
+        resp = RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+        resp.delete_cookie(SESSION_COOKIE_NAME)
+        return resp
+
+    async def _build_group_context(settings: SettingsStore, group_name: str, errors: dict) -> dict:
+        fields = []
+        for spec in GROUPS[group_name]:
+            resolved = await settings.resolve(spec.key)
+            fields.append(
+                {
+                    "key": spec.key,
+                    "label": spec.label,
+                    "is_secret": spec.is_secret,
+                    "value": None if spec.is_secret else resolved.value,
+                    "masked_hint": resolved.masked_hint,
+                    "source": resolved.source,
+                    "field_error": errors.get(spec.key),
+                }
+            )
+        return {"label": _GROUP_LABELS[group_name], "fields": fields, "error": None}
+
+    async def _admin_info_context(settings: SettingsStore) -> dict:
+        resolved = await settings.resolve("admin.password_hash")
+        return {"source": resolved.source}
+
+    async def _status_context(request: Request) -> dict:
+        pool = request.app.state.pool
+        settings = _settings(request)
+        return {
+            "total": await tz.count_total(pool),
+            "today": await tz.count_captured_today(pool),
+            "db_ok": await check_ready(pool),
+            "git_sha": boot.git_sha,
+            "mode": await settings.get_mode(),
+            "by_transcript_status": await tz.count_by_transcript_status(pool),
+        }
+
+    @router.get("/settings", response_class=HTMLResponse)
+    async def settings_page(request: Request):
+        unavailable = await _service_unavailable_if_no_password(request)
+        if unavailable is not None:
+            return unavailable
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+
+        settings = _settings(request)
+        groups = {name: await _build_group_context(settings, name, {}) for name in GROUPS}
+        webhook_url = await settings.get("bale.public_base_url")
+        webhook_secret = await settings.get("bale.webhook_secret")
+        webhook_display = f"{webhook_url}/webhook/***" if webhook_url and webhook_secret else None
+
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            {
+                "admin_path": boot.admin_path,
+                "groups": groups,
+                "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
+                "flash": request.query_params.get("flash"),
+                "webhook": {"url": webhook_display},
+                "status": await _status_context(request),
+                "test_results": {},
+                "admin_info": await _admin_info_context(settings),
+            },
+        )
+
+    @router.post("/settings/{group_name}")
+    async def settings_submit(request: Request, group_name: str):
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+        if group_name not in GROUPS:
+            return PlainTextResponse("unknown group", status_code=404)
+
+        settings = _settings(request)
+        form = await request.form()
+        if not verify_csrf(
+            boot.session_secret,
+            _get_session_cookie(request) or "",
+            str(form.get("csrf_token", "")),
+        ):
+            return PlainTextResponse("bad csrf token", status_code=400)
+
+        ip = client_ip(request, boot.trust_proxy_headers)
+        errors: dict[str, str] = {}
+        for spec in GROUPS[group_name]:
+            raw_value = form.get(spec.key)
+            if raw_value is None:
+                continue
+            value = str(raw_value)
+            if spec.is_secret and value == "":
+                continue  # empty secret field leaves the stored value unchanged
+            try:
+                cleaned = spec.validate(value)
+            except ValueError as exc:
+                errors[spec.key] = str(exc)
+                continue
+            if not spec.is_secret and cleaned == "":
+                continue
+            await settings.set(spec.key, cleaned, actor_ip=ip)
+
+        if errors:
+            groups = {name: await _build_group_context(settings, name, {}) for name in GROUPS}
+            groups[group_name] = await _build_group_context(settings, group_name, errors)
+            return templates.TemplateResponse(
+                request,
+                "settings.html",
+                {
+                    "admin_path": boot.admin_path,
+                    "groups": groups,
+                    "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
+                    "flash": None,
+                    "webhook": {"url": None},
+                    "status": await _status_context(request),
+                    "test_results": {},
+                    "admin_info": await _admin_info_context(settings),
+                },
+                status_code=400,
+            )
+
+        return RedirectResponse(f"{boot.admin_path}/settings?flash=ذخیره+شد", status_code=302)
+
+    @router.post("/settings/clear/{key}")
+    async def settings_clear(request: Request, key: str):
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+
+        settings = _settings(request)
+        form = await request.form()
+        if not verify_csrf(
+            boot.session_secret,
+            _get_session_cookie(request) or "",
+            str(form.get("csrf_token", "")),
+        ):
+            return PlainTextResponse("bad csrf token", status_code=400)
+
+        try:
+            await settings.clear(key, actor_ip=client_ip(request, boot.trust_proxy_headers))
+        except SettingsError:
+            return PlainTextResponse("unknown key", status_code=404)
+        return RedirectResponse(f"{boot.admin_path}/settings?flash=پاک+شد", status_code=302)
+
+    @router.post("/settings/invalidate-sessions")
+    async def invalidate_sessions(request: Request):
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+        settings = _settings(request)
+        form = await request.form()
+        if not verify_csrf(
+            boot.session_secret,
+            _get_session_cookie(request) or "",
+            str(form.get("csrf_token", "")),
+        ):
+            return PlainTextResponse("bad csrf token", status_code=400)
+
+        epoch = await _current_epoch(settings)
+        await settings.set(
+            "admin.session_epoch",
+            str(epoch + 1),
+            actor_ip=client_ip(request, boot.trust_proxy_headers),
+        )
+        resp = RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+        resp.delete_cookie(SESSION_COOKIE_NAME)
+        return resp
+
+    @router.post("/settings/test/{group_name}")
+    async def settings_test(request: Request, group_name: str):
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+        if group_name not in GROUPS:
+            return PlainTextResponse("unknown group", status_code=404)
+
+        settings = _settings(request)
+        form = await request.form()
+        if not verify_csrf(
+            boot.session_secret,
+            _get_session_cookie(request) or "",
+            str(form.get("csrf_token", "")),
+        ):
+            return PlainTextResponse("bad csrf token", status_code=400)
+
+        result_text = await _run_connection_test(request, group_name)
+
+        groups = {name: await _build_group_context(settings, name, {}) for name in GROUPS}
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            {
+                "admin_path": boot.admin_path,
+                "groups": groups,
+                "csrf_token": _csrf_for(boot, _get_session_cookie(request)),
+                "flash": None,
+                "webhook": {"url": None},
+                "status": await _status_context(request),
+                "test_results": {group_name: result_text},
+                "admin_info": await _admin_info_context(settings),
+            },
+        )
+
+    async def _run_connection_test(request: Request, group_name: str) -> str:
+        settings = _settings(request)
+        if group_name == "bale":
+            provider = await request.app.state.registry.get_bale_client()
+            if provider is None:
+                return "خطا: bale.bot_token تنظیم نشده است"
+            try:
+                me = await provider.get_me()
+                info = await provider.get_webhook_info()
+                username = (me.get("result") or {}).get("username", "?")
+                return f"getMe: {username}\ngetWebhookInfo: {info}"
+            except Exception as exc:  # noqa: BLE001 - shown to the owner, never a credential
+                return f"خطا: {exc}"
+
+        if group_name == "llm":
+            base_url = await settings.get("llm.base_url")
+            api_key = await settings.get("llm.api_key")
+            model = await settings.get("llm.chat_model")
+            if not (base_url and api_key and model):
+                return "خطا: تنظیمات LLM کامل نیست"
+            result = await test_chat_connection(base_url, api_key, model)
+            if result.get("ok"):
+                return f"OK — model={result['model']} latency={result['latency_ms']}ms"
+            return f"خطا: {result.get('error')}"
+
+        if group_name == "transcription":
+            backend = await settings.get("transcription.backend")
+            if backend == "local":
+                try:
+                    import faster_whisper  # noqa: F401
+                except ImportError:
+                    return "خطا: افزونه local نصب نشده است (pip install .[local])"
+                return "OK — افزونه local موجود است"
+            base_url = await settings.get("llm.base_url")
+            api_key = await settings.get("llm.api_key")
+            if not (base_url and api_key):
+                return "خطا: تنظیمات AvalAI کامل نیست"
+            return "OK — از تنظیمات LLM مشترک استفاده می‌شود"
+
+        return "نامشخص"
+
+    @router.post("/webhook/register")
+    async def webhook_register(request: Request):
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+        settings = _settings(request)
+        base_url = await settings.get("bale.public_base_url")
+        secret = await settings.get("bale.webhook_secret")
+        provider = await request.app.state.registry.get_bale_client()
+        if provider is None or not base_url or not secret:
+            return RedirectResponse(
+                f"{boot.admin_path}/settings?flash=تنظیمات+بله+کامل+نیست", status_code=302
+            )
+        await provider.set_webhook(f"{base_url}/webhook/{secret}", secret)
+        return RedirectResponse(f"{boot.admin_path}/settings?flash=وبهوک+ثبت+شد", status_code=302)
+
+    @router.post("/webhook/delete")
+    async def webhook_delete(request: Request):
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+        provider = await request.app.state.registry.get_bale_client()
+        if provider is not None:
+            await provider.delete_webhook()
+        return RedirectResponse(f"{boot.admin_path}/settings?flash=وبهوک+حذف+شد", status_code=302)
+
+    @router.post("/recover")
+    async def recover(request: Request):
+        if not await _require_session(request, boot, _settings(request)):
+            return RedirectResponse(f"{boot.admin_path}/login", status_code=302)
+        from app.recovery import recover_stuck_transcriptions
+
+        count = await recover_stuck_transcriptions(request.app)
+        return RedirectResponse(
+            f"{boot.admin_path}/settings?flash=بازیابی+{count}+مورد", status_code=302
+        )
+
+    return router
+
+
+def mount_admin(app: FastAPI, boot: Bootstrap) -> None:
+    app.include_router(build_admin_router(boot), prefix=boot.admin_path)
+    app.mount(
+        f"{boot.admin_path}/static", StaticFiles(directory=str(STATIC_DIR)), name="admin-static"
+    )
+
+    @app.middleware("http")
+    async def admin_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith(boot.admin_path):
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["Content-Security-Policy"] = "default-src 'self'"
+        return response

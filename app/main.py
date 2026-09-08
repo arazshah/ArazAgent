@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Response
 
+from app.admin.routes import mount_admin
 from app.bootstrap import Bootstrap, load_bootstrap
 from app.capture import CaptureContext, handle_update
 from app.crypto import Crypto
@@ -164,6 +165,7 @@ def create_app(boot: Bootstrap | None = None) -> FastAPI:
             logger.exception("unhandled error processing webhook update")
         return {"ok": True}
 
+    mount_admin(app, boot)
     return app
 
 

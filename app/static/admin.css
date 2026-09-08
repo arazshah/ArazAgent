@@ -1,0 +1,170 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #14161a;
+  color: #e6e6e6;
+  font-family: Tahoma, "Segoe UI", sans-serif;
+  line-height: 1.7;
+}
+
+.wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 16px 96px;
+}
+
+h1, h2 {
+  color: #f5f5f5;
+  font-weight: 600;
+}
+
+h1 { font-size: 1.4rem; }
+h2 { font-size: 1.1rem; margin-top: 0; }
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.card {
+  background: #1d2026;
+  border: 1px solid #2a2e36;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  color: #b8bcc4;
+  font-size: 0.9rem;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid #363c46;
+  background: #12141a;
+  color: #f0f0f0;
+  font-size: 0.95rem;
+}
+
+input:focus {
+  outline: 2px solid #4f7cff;
+  outline-offset: 1px;
+}
+
+button {
+  background: #4f7cff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 18px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+button:hover { background: #3d67e8; }
+
+button.secondary {
+  background: #2a2e36;
+  color: #e6e6e6;
+}
+
+button.secondary:hover { background: #363c46; }
+
+button.danger {
+  background: #6e2b2b;
+}
+
+button.danger:hover { background: #832f2f; }
+
+button.small {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+}
+
+button.link {
+  background: none;
+  color: #9aa2ad;
+  text-decoration: underline;
+  padding: 0;
+  margin: 0;
+}
+
+.inline-form {
+  display: inline-block;
+  margin-inline-end: 8px;
+}
+
+.hint {
+  color: #8a909b;
+  font-size: 0.8rem;
+  margin: 4px 0;
+}
+
+.error {
+  color: #ff8080;
+  font-size: 0.85rem;
+}
+
+.flash {
+  color: #7fd88f;
+  background: #16241c;
+  border: 1px solid #23402d;
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 1px 8px;
+  border-radius: 999px;
+  margin-inline-start: 6px;
+  vertical-align: middle;
+}
+
+.badge-db { background: #23402d; color: #7fd88f; }
+.badge-env { background: #3a3620; color: #e0c96a; }
+.badge-default { background: #2a2e36; color: #9aa2ad; }
+
+.test-result {
+  background: #12141a;
+  border: 1px solid #2a2e36;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  margin-top: 12px;
+}
+
+code {
+  background: #12141a;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.login-box {
+  max-width: 320px;
+  margin: 15vh auto 0;
+}
+
+.login-box form {
+  background: #1d2026;
+  border: 1px solid #2a2e36;
+  border-radius: 10px;
+  padding: 24px;
+}
