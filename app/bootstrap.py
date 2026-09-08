@@ -16,10 +16,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _GENERATION_HINTS = {
     "DATABASE_URL": "postgresql://user:pass@host:5432/dbname",
     "SECRET_ENCRYPTION_KEY": (
-        "python -c \"from cryptography.fernet import Fernet; "
-        'print(Fernet.generate_key().decode())"'
+        'python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
     ),
-    "SESSION_SECRET": "python -c \"import secrets; print(secrets.token_urlsafe(48))\"",
+    "SESSION_SECRET": 'python -c "import secrets; print(secrets.token_urlsafe(48))"',
 }
 
 
