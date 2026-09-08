@@ -283,3 +283,40 @@ concern, isolated in the new `app/jalali.py`:
 
 Nothing about `/done <id>`, `/tasks` filtering, or `items.status` changed —
 this phase is display-only.
+
+## Feature: deadline reminders
+
+The first item off the post-Phase-8 roadmap: a once-per-task reminder
+before its deadline. `items` gained one more column, `reminded_at`
+(`NULL` until sent, same "best-effort column bolted on with `ALTER TABLE
+... ADD COLUMN IF NOT EXISTS`" pattern as `embedding`), so a reminder is
+never sent twice and survives a restart (the "already sent" state lives in
+Postgres, not memory).
+
+```
+ app/main._reminder_loop (polls once a minute)
+        │
+        ▼
+ app/reminders.due_reminders(pool, settings)
+        │  SQL: type='task' AND status='open' AND deadline IS NOT NULL
+        │       AND reminded_at IS NULL
+        │       AND deadline - reminder.lead_hours <= now() (Tehran)
+        └──▶ for each row: send format_reminder_text(), then
+             mark_reminded() — stamps reminded_at so it can never
+             fire again for that item.
+```
+
+Two settings (group "reminder"): `reminder.enabled` (default `true` —
+unlike the daily review, this defaults **on**, since a missed deadline is
+a worse failure mode than one unwanted extra message) and
+`reminder.lead_hours` (default `24`). Deadlines are plain dates with no
+time-of-day, so "the deadline" is treated as midnight Tehran time at the
+start of that day — `reminder.lead_hours=24` means reminders start
+arriving from the beginning of the day *before* the deadline.
+
+Scoped deliberately to `type = 'task'` only (not `event`), matching what
+was asked for; broadening it is a one-line SQL change if wanted later. No
+repeated nagging for overdue tasks — one reminder, ever, per task; see
+`FUTURE.md`. `due_reminders()` is tested directly against real rows, same
+"test the DB/pure logic, leave the infinite loop itself untested" split as
+`app.review.is_due()`.

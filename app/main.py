@@ -18,6 +18,7 @@ from app.crypto import Crypto
 from app.db import apply_schema, check_ready, create_pool
 from app.logsafe import install as install_log_redaction
 from app.providers.registry import ProviderRegistry
+from app.reminders import due_reminders, format_reminder_text, mark_reminded
 from app.review import build_review_text, is_due
 from app.settings_store import SettingsStore
 from app.transcribe.orchestrator import transcribe_voice_job
@@ -115,6 +116,44 @@ async def _review_loop(app: FastAPI) -> None:
             logger.exception("review loop iteration failed")
 
 
+async def _reminder_loop(app: FastAPI) -> None:
+    """Checks once a minute for open tasks whose deadline reminder lead
+    time has arrived (reminder.enabled + reminder.lead_hours) and sends
+    each one exactly once — app.reminders.due_reminders() only returns
+    items with reminded_at still NULL, and this stamps it right after
+    sending. On by default (unlike the daily review), since a missed
+    deadline is a worse failure mode than an unwanted extra message.
+    """
+    settings: SettingsStore = app.state.settings
+
+    while True:
+        try:
+            await asyncio.sleep(60)
+
+            due = await due_reminders(app.state.pool, settings)
+            if not due:
+                continue
+
+            allowed = await settings.get_allowed_user_ids()
+            if not allowed:
+                continue
+
+            registry: ProviderRegistry = app.state.registry
+            provider = await registry.get_bale_client()
+            if provider is None:
+                continue
+
+            for item_id, title, deadline in due:
+                text = format_reminder_text(item_id, title, deadline)
+                for user_id in allowed:
+                    await provider.send_message(user_id, text)
+                await mark_reminded(app.state.pool, item_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception("reminder loop iteration failed")
+
+
 def _schedule(job) -> None:
     asyncio.create_task(job())
 
@@ -159,6 +198,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     poll_task = asyncio.create_task(_polling_loop(app))
     review_task = asyncio.create_task(_review_loop(app))
+    reminder_task = asyncio.create_task(_reminder_loop(app))
 
     logger.info("startup complete")
     try:
@@ -166,12 +206,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         poll_task.cancel()
         review_task.cancel()
+        reminder_task.cancel()
         try:
             await poll_task
         except asyncio.CancelledError:
             pass
         try:
             await review_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await reminder_task
         except asyncio.CancelledError:
             pass
         await registry.aclose()

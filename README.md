@@ -1,4 +1,4 @@
-# araz-agent — Personal Capture + Triage + Task + Search + Review + Admin Browser Layer (Phase 8)
+# araz-agent — Personal Capture + Triage + Task + Search + Review + Admin Browser Layer (Phase 8 + reminders)
 
 Single-user capture assistant for the Bale messenger. Receives text and voice
 notes, transcribes voice via AvalAI, classifies each capture into a typed
@@ -25,8 +25,13 @@ turned up and fixed in the retry logic itself). **Phase 8 adds the Shamsi
 (Jalali) calendar**: the triage LLM understands Persian dates the user
 actually writes ("۱۵ مهر", "دوشنبه‌ی بعد"), and every deadline shown to a
 human — bot replies, the admin item browser — displays in Shamsi.
-Storage stays Gregorian throughout. No planning or scoring logic yet; see
-`FUTURE.md` for what's still deferred.
+Storage stays Gregorian throughout. On top of that, **open tasks with a
+deadline now get a one-time reminder** before they're due (default: the
+day before, on by default — configurable under the "یادآوری" group in the
+admin UI). No planning or scoring logic yet; see `FUTURE.md` for what's
+still deferred (including the rest of the roadmap discussed but not yet
+built: bot-side edit/delete, recurring tasks, an inbox browser, OCR,
+analytics, export, calendar sync).
 
 > Status: skeleton under active development. Sections below are being filled
 > in as each part of the system lands (see commit history / PR).

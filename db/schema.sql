@@ -85,3 +85,8 @@ CREATE INDEX IF NOT EXISTS items_open ON items (status, deadline);
 -- index (ivfflat/hnsw): at personal-assistant volume a sequential scan
 -- with `<=>` is fast enough, and an ANN index needs a fixed dimension.
 ALTER TABLE items ADD COLUMN IF NOT EXISTS embedding vector;
+
+-- Feature 1 of the post-Phase-8 roadmap: a once-per-task deadline
+-- reminder (app/reminders.py). NULL until sent; set exactly once so a
+-- task is never reminded twice.
+ALTER TABLE items ADD COLUMN IF NOT EXISTS reminded_at timestamptz;

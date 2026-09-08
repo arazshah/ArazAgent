@@ -120,6 +120,8 @@ _DEFS: list[SettingDef] = [
     # Internal bookkeeping (last date a daily review was actually sent) —
     # not exposed in the admin UI, same pattern as admin.session_epoch.
     SettingDef("review.last_sent_date", "review", False, "", _env_var_for("review.last_sent_date")),
+    SettingDef("reminder.enabled", "reminder", False, "true", _env_var_for("reminder.enabled")),
+    SettingDef("reminder.lead_hours", "reminder", False, "24", _env_var_for("reminder.lead_hours")),
 ]
 
 DEFS_BY_KEY: dict[str, SettingDef] = {d.key: d for d in _DEFS}

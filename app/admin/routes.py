@@ -46,6 +46,7 @@ _GROUP_LABELS = {
     "transcription": "رونویسی",
     "system": "سیستم",
     "review": "مرور دوره‌ای",
+    "reminder": "یادآوری",
 }
 
 _GROUP_ICONS = {
@@ -54,6 +55,7 @@ _GROUP_ICONS = {
     "transcription": "🎙️",
     "system": "⚙️",
     "review": "🗓️",
+    "reminder": "⏰",
 }
 
 _ITEM_TYPE_LABELS = {

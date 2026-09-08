@@ -119,4 +119,15 @@ GROUPS: dict[str, list[FieldSpec]] = {
         ),
         FieldSpec("review.send_time", "ساعت ارسال (HH:MM، به‌وقت تهران)", False, validate_time),
     ],
+    "reminder": [
+        FieldSpec(
+            "reminder.enabled", "یادآوری سررسید کارها فعال باشد (true/false)", False, validate_bool
+        ),
+        FieldSpec(
+            "reminder.lead_hours",
+            "چند ساعت قبل از سررسید یادآوری شود",
+            False,
+            validate_positive_int,
+        ),
+    ],
 }
