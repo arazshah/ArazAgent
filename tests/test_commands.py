@@ -40,3 +40,36 @@ async def test_stats_lists_sources_and_statuses(pool, crypto):
     reply = provider.sent[-1][1]
     assert "bale_text: 1" in reply
     assert "n/a: 1" in reply
+
+
+async def _insert_item(pool, item_type: str, title: str, deadline: str | None = None) -> None:
+    async with pool.connection() as conn:
+        await conn.execute(
+            "INSERT INTO items (type, title, decision, deadline) VALUES (%s, %s, 'auto', %s)",
+            (item_type, title, deadline),
+        )
+
+
+async def test_items_lists_recent_items_with_type_and_deadline(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+    await _insert_item(pool, "task", "call the dentist", "2026-01-05")
+    await _insert_item(pool, "idea", "weekend trip")
+
+    await handle_update(make_text_update(1, 999, "/items"), ctx)
+
+    reply = provider.sent[-1][1]
+    assert "call the dentist" in reply
+    assert "2026-01-05" in reply
+    assert "weekend trip" in reply
+    assert "📌" in reply
+    assert "💡" in reply
+
+
+async def test_items_empty_reports_nothing_yet(pool, crypto):
+    ctx, provider = _ctx(pool, crypto)
+    await ctx.settings.set("bale.allowed_user_ids", "999")
+
+    await handle_update(make_text_update(1, 999, "/items"), ctx)
+
+    assert "هنوز" in provider.sent[-1][1]
